@@ -18,7 +18,7 @@ def probe(path):
         if offset < 0 or offset + 0x1a0 > len(data):
             print("Bone record exceeds file bounds at", hex(offset))
             break
-        name = data[offset + 0x10:offset + 0x30].split(b"\\0",1)[0].decode("shift_jis", "replace")
+        name = data[offset + 0x10:offset + 0x30].split(bytes([0]),1)[0].decode("shift_jis", "replace")
         parent, child, node = struct.unpack_from(">iii", data, offset + 0x110)
         print(f"Bone {i:03d}: {name!r} parent={parent} node={node} child={child}")
         offset += 0x1a0
