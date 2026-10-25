@@ -1,0 +1,19 @@
+{
+  "name": "com.musafirex.emd2unity",
+  "displayName": "EMD2Unity - Kamen Rider PS3 EMD Importer",
+  "version": "0.1.1",
+  "unity": "2022.3",
+  "description": "Experimental native Unity Editor importer for Kamen Rider Battride War PS3 EMD models (meshes, materials, bones and skin weights).",
+  "keywords": [
+    "kamen-rider",
+    "emd",
+    "ps3",
+    "model-importer"
+  ],
+  "author": {
+    "name": "MusafirEx"
+  },
+  "documentationUrl": "https://github.com/MusafirEx/EMD2Unity#readme",
+  "changelogUrl": "https://github.com/MusafirEx/EMD2Unity/blob/main/CHANGELOG.md",
+  "licensesUrl": "https://github.com/MusafirEx/EMD2Unity/blob/main/LICENSE.md"
+}

@@ -1,0 +1,22 @@
+name: Build Unity package
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+permissions:
+  contents: read
+jobs:
+  build-unitypackage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build .unitypackage
+        run: python Tools/build_unitypackage.py --output EMD2Unity-v0.1.1.unitypackage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EMD2Unity-v0.1.1-unitypackage
+          path: EMD2Unity-v0.1.1.unitypackage
