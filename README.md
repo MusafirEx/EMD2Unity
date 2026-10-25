@@ -2,7 +2,7 @@
 
 Native **Unity 2022.3+** Editor package for experimenting with PS3 Kamen Rider *Battride War / Battride War Genesis (Sousei)* `.EMD` models. The parser was rewritten in C# based on the format research of [Random Talking Bush](https://github.com/RandomTBush/RTB-3DSMax-Scripts/blob/main/Scripts/KamenRiderPS3_EMD.ms).
 
-> **Experimental:** The package has not yet been compiled inside a live Unity Editor or verified with real PS3 EMD files. It may require fixes for particular models.
+> **Experimental:** The Editor assembly has compiled in Unity 2022.3.62f3, but the importer has not yet been verified with real PS3 EMD files. It may require fixes for particular models.
 
 ## Install directly from this GitHub repository
 
@@ -19,7 +19,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.1.1.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.1.2.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.

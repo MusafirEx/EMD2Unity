@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 (package maintenance)
+
+- Added missing Unity `.meta` files for package manifest, README, changelog, license and classic package builder, preventing immutable Git package warnings.
+- Confirmed Editor assembly compiles in Unity 2022.3.62f3; import of real EMD game models remains unverified.
+- Updated package version and classic `.unitypackage` build instructions.
+
 ## 0.1.1 (experimental)
 
 - Install directly through Unity Package Manager using a Git URL.
