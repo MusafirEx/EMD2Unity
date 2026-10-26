@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.AssetImporters;
 using UnityEngine;
@@ -15,7 +16,7 @@ using UnityEngine.Rendering;
 
 namespace MusafirEx.EMD2Unity
 {
-    [ScriptedImporter(2, "emd")]
+    [ScriptedImporter(3, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         [Header("Model")]
@@ -27,6 +28,9 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private bool importSkeleton = true;
         [Header("Materials")]
         [SerializeField] private bool findNearbyTextures = true;
+        [SerializeField] private bool useEmatTextureReferences = true;
+        [SerializeField] private bool linkNormalMaps = false;
+        [SerializeField] private bool linkSpecularMaps = false;
 
         public override void OnImportAsset(AssetImportContext ctx)
         {
@@ -96,6 +100,8 @@ namespace MusafirEx.EMD2Unity
                     ? "" : UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline.GetType().Name;
                 Shader shader = pipeline.Contains("Universal") ? Shader.Find("Universal Render Pipeline/Lit")
                     : pipeline.Contains("HD") ? Shader.Find("HDRP/Lit") : Shader.Find("Standard");
+                if (linkSpecularMaps && string.IsNullOrEmpty(pipeline))
+                    shader = Shader.Find("Standard (Specular setup)") ?? shader;
                 shader = shader ?? Shader.Find("Standard") ?? Shader.Find("Universal Render Pipeline/Lit")
                     ?? Shader.Find("HDRP/Lit") ?? Shader.Find("Unlit/Texture");
                 if (shader == null) throw new InvalidOperationException("No compatible material shader found.");
@@ -103,22 +109,94 @@ namespace MusafirEx.EMD2Unity
                 if (findNearbyTextures)
                 {
                     string texName = info.TextureName;
+                    var ematTextures = new List<string>();
+                    if (useEmatTextureReferences)
+                    {
+                        string ematPath = FindCompanionEmat(ctx.assetPath, info.Name);
+                        if (ematPath != null)
+                        {
+                            ctx.DependsOnSourceAsset(ematPath);
+                            ematTextures = ReadEmatTextureReferences(ematPath);
+                        }
+                    }
                     if (string.IsNullOrWhiteSpace(texName) || texName == "null")
                     {
-                        // Three texture-name exceptions from Random Talking Bush's MaxScript.
+                        // Exceptions from Random Talking Bush's MaxScript.
                         if (name.Equals("CCS00", StringComparison.OrdinalIgnoreCase) && info.Name == "CCS00eye02") texName = "CCS00eye00_CO";
                         else if (name.Equals("KAB00", StringComparison.OrdinalIgnoreCase) && info.Name == "eye2") texName = "KAB00eye00_CO";
                         else if (name.Equals("GAI01_W01", StringComparison.OrdinalIgnoreCase) && info.Name == "GAI01W04_base") texName = "GAI01djgun00_CO";
-                    }
-                    string assetPath = string.IsNullOrWhiteSpace(texName) || texName == "null" ? null : FindTexture(ctx.assetPath, texName);
-                    if (assetPath != null)
-                    {
-                        ctx.DependsOnSourceAsset(assetPath);
-                        Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
-                        if (texture != null)
+                        else
                         {
-                            if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", texture);
-                            if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", texture);
+                            // Do not guess a material variant when .emat contains multiple colour references.
+                            var colours = ematTextures.Where(t => t.EndsWith("_CO", StringComparison.OrdinalIgnoreCase)).ToList();
+                            if (colours.Count == 1) texName = colours[0];
+                        }
+                    }
+
+                    Texture2D diffuse = LoadNearbyTexture(ctx, ctx.assetPath, texName);
+                    if (diffuse != null)
+                    {
+                        if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", diffuse);
+                        if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", diffuse);
+                        if (mat.HasProperty("_BaseColorMap")) mat.SetTexture("_BaseColorMap", diffuse);
+                    }
+
+                    // EMAT contains actual texture references; unlike a guessed filename,
+                    // the chosen normal/specular map must match the EMD colour-map stem.
+                    if (!string.IsNullOrWhiteSpace(texName) &&
+                        texName.EndsWith("_CO", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string stem = texName.Substring(0, texName.Length - 3);
+                        if (linkNormalMaps)
+                        {
+                            string normalName = stem + "_NO";
+                            if (ematTextures.Any(t => t.Equals(normalName, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                string normalPath = FindTexture(ctx.assetPath, normalName);
+                                if (normalPath != null)
+                                {
+                                    ctx.DependsOnSourceAsset(normalPath);
+                                    var importer = AssetImporter.GetAtPath(normalPath) as TextureImporter;
+                                    // Unity normal-map packing requires an imported Normal map.
+                                    // Do not assign raw DDS as a normal map: it renders incorrectly.
+                                    if (importer != null && importer.textureType == TextureImporterType.NormalMap)
+                                    {
+                                        Texture2D normal = AssetDatabase.LoadAssetAtPath<Texture2D>(normalPath);
+                                        if (normal != null)
+                                        {
+                                            if (mat.HasProperty("_BumpMap")) mat.SetTexture("_BumpMap", normal);
+                                            if (mat.HasProperty("_NormalMap")) mat.SetTexture("_NormalMap", normal);
+                                            mat.EnableKeyword("_NORMALMAP");
+                                        }
+                                    }
+                                    else
+                                        ctx.LogImportWarning("EMD normal texture '" + normalPath +
+                                            "' must be imported as Texture Type: Normal map before enabling normal linking.");
+                                }
+                            }
+                        }
+                        if (linkSpecularMaps)
+                        {
+                            string specName = stem + "_SP";
+                            if (ematTextures.Any(t => t.Equals(specName, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                Texture2D spec = LoadNearbyTexture(ctx, ctx.assetPath, specName);
+                                if (spec != null)
+                                {
+                                    if (mat.HasProperty("_SpecGlossMap"))
+                                    {
+                                        mat.SetTexture("_SpecGlossMap", spec);
+                                        if (mat.HasProperty("_WorkflowMode"))
+                                        {
+                                            mat.SetFloat("_WorkflowMode", 0f);
+                                            mat.EnableKeyword("_SPECULAR_SETUP");
+                                        }
+                                        mat.EnableKeyword("_SPECGLOSSMAP");
+                                    }
+                                    else if (mat.HasProperty("_SpecularColorMap"))
+                                        mat.SetTexture("_SpecularColorMap", spec);
+                                }
+                            }
                         }
                     }
                 }
@@ -215,6 +293,50 @@ namespace MusafirEx.EMD2Unity
             ctx.AddObjectToAsset("root", root);
             ctx.SetMainObject(root);
             if (doc.Groups.Count == 0) ctx.LogImportWarning("No polygon groups found.");
+        }
+
+        // EMAT v1 discovery only: the observed files use the "TAME" byte order and
+        // hold null-terminated texture names. We do not infer sampler order, UV sets,
+        // render states or shader parameters from these strings.
+        private static List<string> ReadEmatTextureReferences(string path)
+        {
+            var names = new List<string>();
+            byte[] bytes = File.ReadAllBytes(path);
+            if (bytes.Length < 4 || bytes.Length > 2 * 1024 * 1024 ||
+                bytes[0] != (byte)'T' || bytes[1] != (byte)'A' ||
+                bytes[2] != (byte)'M' || bytes[3] != (byte)'E') return names;
+            string source = Encoding.ASCII.GetString(bytes);
+            var matches = Regex.Matches(source,
+                @"(?<![A-Za-z0-9_])[A-Za-z0-9_]{3,72}_(?:CO|NO|SP)(?=\x00)",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            foreach (Match match in matches)
+            {
+                if (!names.Any(existing => existing.Equals(match.Value, StringComparison.OrdinalIgnoreCase)))
+                    names.Add(match.Value);
+            }
+            return names;
+        }
+
+        private static string FindCompanionEmat(string emdPath, string materialName)
+        {
+            string parent = Path.GetDirectoryName(emdPath)?.Replace('\\', '/');
+            if (string.IsNullOrEmpty(parent) || string.IsNullOrEmpty(materialName)) return null;
+            string dir = parent + "/material";
+            if (!Directory.Exists(dir)) return null;
+            foreach (string path in Directory.EnumerateFiles(dir))
+                if (Path.GetExtension(path).Equals(".emat", StringComparison.OrdinalIgnoreCase) &&
+                    Path.GetFileNameWithoutExtension(path).Equals(materialName, StringComparison.OrdinalIgnoreCase))
+                    return path.Replace('\\', '/');
+            return null;
+        }
+
+        private static Texture2D LoadNearbyTexture(AssetImportContext ctx, string emdPath, string textureName)
+        {
+            if (string.IsNullOrWhiteSpace(textureName) || textureName == "null") return null;
+            string assetPath = FindTexture(emdPath, textureName);
+            if (assetPath == null) return null;
+            ctx.DependsOnSourceAsset(assetPath);
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
         }
 
         private static string FindTexture(string emdPath, string textureName)

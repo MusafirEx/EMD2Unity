@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.4 (companion EMAT material references)
+
+- Read bounded ASCII texture-name references from neighbouring TAME-header .emat assets under model/material/ (discovery only, not full shader or sampler decoding).
+- Prefer explicitly declared EMD material colour texture; fall back to EMAT _CO only when exactly one choice exists.
+- Match _NO/_SP references only to the selected colour texture stem. Expose opt-in normal/specular linking in Materials Inspector.
+- Normal linking checks that the corresponding Unity texture has been imported as a Normal map, avoiding incorrect raw-DDS tangent-space interpretation.
+- Track source dependencies for .emat and matched textures; bump ScriptedImporter from 2 to 3 to trigger reimport.
+- Offline check of 19 game EMD and 117 EMAT files: 97/99 material colour choices resolved, 52 matching _NO and 73 matching _SP references. Two multivariant icon materials intentionally unresolved.
+- Live Unity rendering, skeleton inspection and shader correctness remain unverified.
+
+
 ## 0.1.3 (EMD index buffer fix)
 
 - Fixed EMD triangle index count: the field stores 16-bit index count, not triangle count.

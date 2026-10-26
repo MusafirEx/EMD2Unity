@@ -32,7 +32,10 @@ namespace MusafirEx.EMD2Unity
                     break;
                 case 2:
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("findNearbyTextures"), new GUIContent("Find DDS/PNG Textures Nearby"));
-                    EditorGUILayout.HelpBox("Place extracted textures in a 'textures' folder next to the EMD or in the same directory. The importer uses the first referenced submaterial texture.", MessageType.Info);
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("useEmatTextureReferences"), new GUIContent("Read Companion EMAT Texture Names"));
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("linkNormalMaps"), new GUIContent("Link Normal Textures (Opt-in)"));
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("linkSpecularMaps"), new GUIContent("Link Specular Textures (Opt-in)"));
+                    EditorGUILayout.HelpBox("EMAT texture names are used only to match explicit _CO, _NO and _SP references. Diffuse prefers the EMD material reference. Multiple EMAT colour variants are never guessed. Place textures in a sibling 'textures' folder. To enable normals, first set each _NO texture's Texture Type to Normal map. Specular matching is experimental and depends on shader support.", MessageType.Info);
                     break;
                 default:
                     EditorGUILayout.HelpBox("Animation clips are not embedded/imported by this EMD parser. Separate animation format reverse-engineering is required.", MessageType.Warning);
