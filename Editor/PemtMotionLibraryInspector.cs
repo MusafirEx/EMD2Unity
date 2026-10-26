@@ -15,6 +15,8 @@ namespace MusafirEx.EMD2Unity
         private int trackPage = 0;
         private const int TrackPageSize = 24;
         private Vector2 listScroll;
+        private GameObject targetEmd;
+        private bool rotateDeltaFirst;
 
         public override void OnInspectorGUI()
         {
@@ -26,7 +28,7 @@ namespace MusafirEx.EMD2Unity
                 return;
             }
             EditorGUILayout.HelpBox(
-                "Read-only structural inventory. PEMT keyframe encoding, bone mapping and blend rules are not yet decoded. No AnimationClip has been created.",
+                "Motion IDs and tracks can be inspected here. Experimental .anim export decodes float16 position/quaternion keyframes; pose composition remains under validation.",
                 MessageType.Info);
             EditorGUILayout.LabelField("File bytes", library.sourceByteCount.ToString("N0"));
             EditorGUILayout.LabelField("Pointer slots", library.pointerTableEntries.ToString());
@@ -71,6 +73,19 @@ namespace MusafirEx.EMD2Unity
             EditorGUILayout.LabelField("Apparent duration", selected.apparentDurationSeconds.ToString("F6") + "s");
             EditorGUILayout.LabelField("Nominal frames at 60 Hz", selected.nominalFramesAt60Hz.ToString());
             EditorGUILayout.LabelField("Track count", selected.tracks.Count.ToString());
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Experimental AnimationClip Export",EditorStyles.boldLabel);
+            targetEmd=(GameObject)EditorGUILayout.ObjectField("EMD Model",targetEmd,typeof(GameObject),false);
+            rotateDeltaFirst=EditorGUILayout.Toggle("Delta Rotation First",rotateDeltaFirst);
+            EditorGUILayout.HelpBox("Assign the imported EMD model matching this PEMT character. The clip is generated from real float16 keyframes. When joints look twisted, compare both Delta Rotation First modes. Test on a duplicate model.",MessageType.Warning);
+            using(new EditorGUI.DisabledScope(targetEmd==null))
+            {
+                if(GUILayout.Button("Export Selected Motion to .anim"))
+                {
+                    try{PemtAnimationClipExporter.Export(library,selected,targetEmd,rotateDeltaFirst);}
+                    catch(Exception ex){Debug.LogException(ex);EditorUtility.DisplayDialog("PEMT Export Failed",ex.Message,"OK");}
+                }
+            }
             int maxPage = Math.Max(0, (selected.tracks.Count - 1) / TrackPageSize);
             if (trackPage > maxPage) trackPage = maxPage;
             EditorGUILayout.BeginHorizontal();
@@ -89,9 +104,9 @@ namespace MusafirEx.EMD2Unity
                     EditorStyles.miniBoldLabel);
                 EditorGUI.indentLevel++;
                 EditorGUILayout.LabelField("Track duration", track.apparentDurationSeconds.ToString("F6") + "s");
-                EditorGUILayout.LabelField("Payload offset (block-relative)", "0x" + track.dataStartRelative.ToString("X"));
-                EditorGUILayout.LabelField("Payload end (block-relative)", track.dataEndRelative == 0 ?
-                    "0 (unspecified)" : "0x" + track.dataEndRelative.ToString("X"));
+                EditorGUILayout.LabelField("Key times offset (block-relative)", "0x" + track.dataStartRelative.ToString("X"));
+                EditorGUILayout.LabelField("Key values offset (block-relative)", track.dataEndRelative == 0 ?
+                    "None (timeline track)" : "0x" + track.dataEndRelative.ToString("X"));
                 EditorGUI.indentLevel--;
             }
         }

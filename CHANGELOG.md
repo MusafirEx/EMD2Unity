@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 (experimental PEMT animation export)
+
+- Identified 0x02040021 position tracks and 0x02040028 quaternion tracks: big-endian IEEE-754 float32 times and packed half-float XYZ0/XYZW values.
+- The high half of each track's info word is the EMD bone-name suffix (_j7, _j150, _j320); low half is key count.
+- Validated all 18,938 track descriptors and 198,419 quaternion keys from 17 original PEMT samples; quaternion norms 0.99917–1.00001, no malformed value arrays.
+- Added export of selected PEMT Motion ID to .anim using a chosen EMD prefab, rest-pose translation and rotation, quaternion sign continuity and EMD axis/scale options.
+- Experimental choice for rotation multiplication order. Unmatched accessory-bone tracks skipped and counted.
+- EMD importer remains identical to v0.1.5; no changes to normal texture handling. Visual pose correctness and Unity compilation pending.
+
+
 ## 0.2.1 (fix PEMT ScriptableObject registration)
 
 - Fixed Unity `InvalidOperationException: Failed to add object of type PemtMotionLibrary` during `*.pemt` import.
