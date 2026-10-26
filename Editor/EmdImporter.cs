@@ -16,7 +16,7 @@ using UnityEngine.Rendering;
 
 namespace MusafirEx.EMD2Unity
 {
-    [ScriptedImporter(3, "emd")]
+    [ScriptedImporter(4, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         [Header("Model")]
@@ -171,7 +171,8 @@ namespace MusafirEx.EMD2Unity
                                     }
                                     else
                                         ctx.LogImportWarning("EMD normal texture '" + normalPath +
-                                            "' must be imported as Texture Type: Normal map before enabling normal linking.");
+                                            "' is not imported as a Normal map. In the EMD Materials tab, click " +
+                                            "'Prepare Nearby _NO Textures as Normal Maps' to fix this.");
                                 }
                             }
                         }
@@ -293,6 +294,43 @@ namespace MusafirEx.EMD2Unity
             ctx.AddObjectToAsset("root", root);
             ctx.SetMainObject(root);
             if (doc.Groups.Count == 0) ctx.LogImportWarning("No polygon groups found.");
+        }
+
+        // Called from the Inspector, never from OnImportAsset: changing an importer
+        // during its own import would cause nested imports/reimport loops.
+        // Every *_NO image in the model's adjacent textures directory is treated
+        // as a normal map; existing NormalMap importers are left unchanged.
+        internal static int PrepareNearbyNormalTextures(string emdPath, out int matched)
+        {
+            matched = 0;
+            int updated = 0;
+            string parent = Path.GetDirectoryName(emdPath)?.Replace('\\', '/');
+            if (string.IsNullOrEmpty(parent)) return 0;
+            var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string[] directories = { parent + "/textures", parent + "/Textures", parent };
+            string[] extensions = { ".dds", ".png", ".tga", ".jpg", ".jpeg", ".bmp" };
+            foreach (string directory in directories)
+            {
+                if (!Directory.Exists(directory)) continue;
+                foreach (string file in Directory.EnumerateFiles(directory))
+                {
+                    if (!Path.GetFileNameWithoutExtension(file).EndsWith("_NO", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (!extensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
+                        continue;
+                    string assetPath = file.Replace('\\', '/');
+                    if (!visited.Add(assetPath)) continue;
+                    var textureImporter = AssetImporter.GetAtPath(assetPath) as TextureImporter;
+                    if (textureImporter == null) continue;
+                    matched++;
+                    if (textureImporter.textureType == TextureImporterType.NormalMap) continue;
+                    textureImporter.textureType = TextureImporterType.NormalMap;
+                    textureImporter.sRGBTexture = false;
+                    textureImporter.SaveAndReimport();
+                    updated++;
+                }
+            }
+            return updated;
         }
 
         // EMAT v1 discovery only: the observed files use the "TAME" byte order and

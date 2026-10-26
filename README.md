@@ -2,7 +2,7 @@
 
 Native **Unity 2022.3+** Editor package for experimenting with PS3 Kamen Rider *Battride War / Battride War Genesis (Sousei)* `.EMD` models. The parser was rewritten in C# based on the format research of [Random Talking Bush](https://github.com/RandomTBush/RTB-3DSMax-Scripts/blob/main/Scripts/KamenRiderPS3_EMD.ms).
 
-> **Experimental:** The Editor assembly was previously compiled in Unity 2022.3.62f3. Version 0.1.4 adds experimental companion `.emat` texture-reference discovery for _CO/_NO/_SP maps. Unity rendering, rig and shader equivalence remain pending. It may require fixes for particular models.
+> **Experimental:** The Editor assembly was previously compiled in Unity 2022.3.62f3. Version 0.1.5 adds one-click Normal-map importer preparation in the Materials tab and clearer warnings when `_NO` textures are not yet configured. Unity rendering, rig and shader equivalence remain pending. It may require fixes for particular models.
 
 ## Install directly from this GitHub repository
 
@@ -19,7 +19,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.1.4.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.1.5.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
@@ -30,7 +30,7 @@ Then in Unity select **Assets → Import Package → Custom Package...** and sel
 2. Place `*.EMD` in `Assets/Models/`. Unity creates an imported prefab-like GameObject.
 3. Select the EMD and use the **Model / Rig / Materials / Animation** Inspector tabs. The animation tab is currently **informational only**; this importer does not parse animation sequences.
 4. For texture matching, put extracted `*.dds`, `*.png`, `*.tga` or `*.jpg` in a sibling `textures/` directory, and companion `.emat` files in the sibling `material/` directory. EMD's diffuse reference takes priority; EMAT supplies explicitly named _CO/_NO/_SP maps when unambiguous.
-5. In the **Materials** inspector tab, you can opt in to normal/specular linking. Import `_NO` textures with Unity **Texture Type: Normal map** first; normal linking skips raw DDS textures until their importer type is correct. Specular linking is experimental and shader-dependent.
+5. In the **Materials** inspector tab click **Prepare Nearby _NO Textures as Normal Maps** to convert supported `_NO` texture import settings and enable normal linking. This modifies only nearby `_NO` texture import settings, then reimports the EMD; it does not convert the underlying PS3 normal-map encoding. The tool also accepts already configured Normal maps. Specular linking is experimental and shader-dependent.
 6. Change **Reverse Triangle Winding** if faces are inverted, and test the rig by moving bones.
 
 ## Status

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.5 (normal texture import setup)
+
+- Materials Inspector: **Prepare Nearby _NO Textures as Normal Maps** converts neighbouring _NO textures to Unity Normal-map importer type, enables normal linking and reimports the selected EMD.
+- Leaves unrelated textures and already configured normal textures untouched.
+- Improved warning when a normal texture exists but is imported as a regular texture.
+- Keeps import-setting changes outside OnImportAsset to avoid re-entrant AssetDatabase imports.
+- Bumped ScriptedImporter version to 4; Unity compilation and visual inspection are pending.
+- Limitation: imported PS3 DDS normals may still require channel/green-axis adjustments to match original rendering.
+
+
 ## 0.1.4 (companion EMAT material references)
 
 - Read bounded ASCII texture-name references from neighbouring TAME-header .emat assets under model/material/ (discovery only, not full shader or sampler decoding).

@@ -15,8 +15,8 @@ jobs:
         with:
           python-version: '3.11'
       - name: Build .unitypackage
-        run: python Tools/build_unitypackage.py --output EMD2Unity-v0.1.4.unitypackage
+        run: python Tools/build_unitypackage.py --output EMD2Unity-v0.1.5.unitypackage
       - uses: actions/upload-artifact@v4
         with:
-          name: EMD2Unity-v0.1.4-unitypackage
-          path: EMD2Unity-v0.1.4.unitypackage
+          name: EMD2Unity-v0.1.5-unitypackage
+          path: EMD2Unity-v0.1.5.unitypackage
