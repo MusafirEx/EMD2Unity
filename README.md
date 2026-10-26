@@ -19,7 +19,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.4.3.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.4.4.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
@@ -84,6 +84,10 @@ Tested structurally against 12 SEQ samples from DLC 1.02. Live Unity Editor comp
 3. For a selected code, compare four numeric hypotheses: exact 32-bit CCM code, its low16, low16+0x100, and low16+0x200. Each present PEMT motion shows its container name, Motion ID, duration and track count. **Open This PEMT in Motion Browser** for manual inspection.
 4. These are numerical coincidences/candidates, NOT proven gameplay mappings, per-hit timing, animation-event offsets, or a runnable combo state machine. A CCM link at +0x68 still refers to a recorded low16 index; it is not assumed to select a PEMT clip.
 5. The CSD/GSD/SPC samples share the terminal CCM `0x00070057` code, while their `0000.pemt` containers include candidate `0x157` motions. This is useful evidence for further testing, not an action-to-animation decoder.
+
+### PEMT header error diagnostics (v0.4.4)
+
+Version 0.4.4 identifies the exact failed validation field for previously unsupported PEMT sources (e.g. ACL). The error includes pointer count, offset, declared size and actual size. No decoding rules are relaxed; character animations already working are unchanged.
 
 ## Status
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.4 (PEMT header error diagnostics)
+
+- Reports separately which supported PEMT header check fails: pointer count, pointer-table offset, declared file size, or table/file boundary, including the actual values.
+- Reimports PEMT metadata after changing ScriptedImporter version to 3.
+- Preserves existing valid motion decoding, Animation Preview and Export All. No changes to EMD, SEQ or CCM.
+- Unsupported ACL variant still needs raw header values or source file for further investigation; no speculative parsing.
+
+
 ## 0.4.3 (experimental numeric CCM-to-PEMT cross-reference)
 
 - Added a read-only **CCM / PEMT Numeric Cross-Reference** section to the existing CCM Inspector and Browser. No CCM, PEMT or EMD binary readers are changed.
