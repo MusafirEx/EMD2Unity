@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0 (PEMT read-only motion container importer)
+
+- Added `PemtImporter` creating a `PemtMotionLibrary` ScriptableObject for `*.pemt` files.
+- Validates big-endian header, absolute indexed motion pointers, 32-byte track descriptors and payload bounds.
+- Read-only Inspector supports hexadecimal/decimal Motion ID search, durations, 60 Hz nominal frame estimate, track marker/info and payload offsets.
+- Keeps raw track marker and info bytes as uninterpreted metadata; does NOT decode transform channels or create AnimationClips.
+- Parser designed against 17 v1.02 update sample PEMT files (309 occupied motions, 18,938 track descriptors; no samples shipped).
+- Leaves v0.1.5 EMD model importer behavior unchanged, including its DDS normal-map limitations.
+- Unity Editor compilation and visual inspection of new PEMT inspector remain pending.
+
+
 ## 0.1.5 (normal texture import setup)
 
 - Materials Inspector: **Prepare Nearby _NO Textures as Normal Maps** converts neighbouring _NO textures to Unity Normal-map importer type, enables normal linking and reimports the selected EMD.
