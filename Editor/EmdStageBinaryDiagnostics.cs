@@ -4,6 +4,7 @@
 // vertices or infer an unsupported topology.
 #if UNITY_EDITOR
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using UnityEditor;
@@ -114,7 +115,7 @@ namespace MusafirEx.EMD2Unity
             }
         }
 
-        private static void ProbeConventionalMeshHeaders(
+        internal static List<int> ProbeConventionalMeshHeaders(
             StringBuilder r, byte[] data, long record, long recordEnd)
         {
             // This is evidence gathering ONLY. Search 4-byte aligned positions
@@ -122,8 +123,9 @@ namespace MusafirEx.EMD2Unity
             // layout. An apparent match never becomes a Unity mesh automatically.
             long end = Math.Min(recordEnd - 0x90, record + 0x100000L);
             int candidates = 0;
+            var result = new List<int>();
             int checkedSlots = 0;
-            r.AppendLine("  Candidate conventional mesh headers (read-only scan):");
+            if (r != null) r.AppendLine("  Candidate conventional mesh headers (read-only scan):");
             for (long at = record + 0x140; at <= end; at += 4)
             {
                 checkedSlots++;
@@ -154,7 +156,8 @@ namespace MusafirEx.EMD2Unity
                 }
                 if (!valid) continue;
                 candidates++;
-                if (candidates <= 6)
+                result.Add((int)at);
+                if (r != null && candidates <= 6)
                     r.AppendLine("    candidate " + candidates + ": header=" + Hex(at) +
                         " indexStart=" + Hex(indexStart) +
                         " positionStart=" + Hex(positionStart) +
@@ -162,9 +165,10 @@ namespace MusafirEx.EMD2Unity
                         " maxIndex=" + maximum + " uvStride=" + uvStride +
                         " firstXYZ=" + FloatTriplet(data, positionStart));
             }
-            r.AppendLine("  Scan checked " + checkedSlots + " aligned positions; " +
+            if (r != null) r.AppendLine("  Scan checked " + checkedSlots + " aligned positions; " +
                 candidates + " structurally consistent candidate(s). " +
                 "No conversion attempted; candidates are unverified.");
+            return result;
         }
 
         private static void InspectType200(StringBuilder report, byte[] data,
