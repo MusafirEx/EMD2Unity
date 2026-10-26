@@ -2,7 +2,7 @@
 
 Native **Unity 2022.3+** Editor package for experimenting with PS3 Kamen Rider *Battride War / Battride War Genesis (Sousei)* `.EMD` models. The parser was rewritten in C# based on the format research of [Random Talking Bush](https://github.com/RandomTBush/RTB-3DSMax-Scripts/blob/main/Scripts/KamenRiderPS3_EMD.ms).
 
-> **Experimental:** The Editor assembly was previously compiled in Unity 2022.3.62f3. Version 0.4.0 adds in-Editor PEMT Animation Preview with Play/Pause/Stop, scrubbing, orbit and zoom. Version 0.3.7 adds optional partial recovery of supported polygon records and detailed vertex buffer diagnostics for stage EMDs. Version 0.3.6 supported verifiable nonstandard triangle counts or trailing padding in EMD stage index buffers. Version 0.3.5 added 28-byte UV/color-record support for stage EMD models and flags imported EMD assets containing no renderable geometry. Version 0.3.4 adds batch export of all PEMT motions with transform keys to separate .anim files. The decoder is the same as the working single-motion export. Version 0.3.3 made PEMT Inspector controls interactive when selecting a .pemt source file. The previous UI was attached to the generated ScriptableObject, which Unity displays read-only. A separate PEMT Motion Browser window is also available. The EMD model importer remains unchanged from v0.1.5. Unity rendering, rig and shader equivalence remain pending. It may require fixes for particular models.
+> **Experimental:** The Editor assembly was previously compiled in Unity 2022.3.62f3. Version 0.4.1 adds a read-only SEQ Inspector/Browser for big-endian header words, referenced resource strings and raw byte-marker counts (without guessing VM opcodes). Version 0.4.0 added in-Editor PEMT Animation Preview with Play/Pause/Stop, scrubbing, orbit and zoom. Version 0.3.7 adds optional partial recovery of supported polygon records and detailed vertex buffer diagnostics for stage EMDs. Version 0.3.6 supported verifiable nonstandard triangle counts or trailing padding in EMD stage index buffers. Version 0.3.5 added 28-byte UV/color-record support for stage EMD models and flags imported EMD assets containing no renderable geometry. Version 0.3.4 adds batch export of all PEMT motions with transform keys to separate .anim files. The decoder is the same as the working single-motion export. Version 0.3.3 made PEMT Inspector controls interactive when selecting a .pemt source file. The previous UI was attached to the generated ScriptableObject, which Unity displays read-only. A separate PEMT Motion Browser window is also available. The EMD model importer remains unchanged from v0.1.5. Unity rendering, rig and shader equivalence remain pending. It may require fixes for particular models.
 
 ## Install directly from this GitHub repository
 
@@ -19,7 +19,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.4.0.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.4.1.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
@@ -58,6 +58,16 @@ Then in Unity select **Assets → Import Package → Custom Package...** and sel
 **Limitations:** no automatic clip stitching, root-motion extraction, events, scale curves, original interpolation reconstruction, or humanoid mapping. Additional bones absent from the chosen EMD are skipped and reported.
 
 The PEMT parser uses big-endian header and 32-byte track descriptors. In the game samples, header word `0x400`, a 0x10 pointer-table offset, ascending aligned motion-block pointers, and an apparent ~60 Hz duration grid were observed. ID 0 is treated as an indexed entry, not automatically named "idle". The nominal frame count is inferred from duration × 60, not guaranteed to equal Unity animation sample counts.
+
+### SEQ Inspector / Browser (v0.4.1)
+
+1. Place your own extracted `*.seq` files under `Assets/`. Select `setup.seq`, `anm00.seq`, `cpu.seq`, or `assist.seq` to use the read-only `SeqImporter` Inspector, or open **Tools → EMD2Unity → SEQ Browser**.
+2. Inspect the first four big-endian header words, file size, candidate ASCII strings, and **raw** counts for patterns `12 00 00 00`, `16 00 00 00` and `20 13 00 00`.
+3. Filter resource strings by category (`motion-container`, `combo-container`, `sequence-script`, `model`, `effect`, `camera`, `cutin-drama`, etc.) or path. Each record shows its byte offset, big-endian pointer matches before the string, and matches preceded by `16 00 00 00`. Use **Copy path** to copy original resource paths.
+4. Unlike `.pemt`, SEQ is **not a keyframe file**. Strings and pointer matches establish resource references, not Motion IDs, animation events, frame timing, hitboxes or gameplay instruction meanings. Raw marker counts are unaligned byte searches, not decoded opcodes.
+5. The Inspector does not change SEQ content or attempt an Animator Controller. The existing EMD stage importer and PEMT Animation Preview/export code remain unchanged.
+
+Tested structurally against 12 SEQ samples from DLC 1.02. Live Unity Editor compilation/GUI validation pending.
 
 ## Status
 

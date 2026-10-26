@@ -18,6 +18,10 @@ FILES = (
     "Editor/PemtMotionBrowserWindow.cs",
     "Editor/PemtAnimationClipExporter.cs",
     "Editor/PemtAnimationBatchExporter.cs",
+    "Editor/SeqScriptLibrary.cs",
+    "Editor/SeqImporter.cs",
+    "Editor/SeqImporterInspector.cs",
+    "Editor/SeqBrowserWindow.cs",
     "Editor/MusafirEx.EMD2Unity.Editor.asmdef",
 )
 
@@ -52,7 +56,7 @@ def build(destination):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", default="EMD2Unity-v0.4.0.unitypackage")
+    parser.add_argument("--output", default="EMD2Unity-v0.4.1.unitypackage")
     args = parser.parse_args()
     output = pathlib.Path(args.output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.1 (SEQ binary inspector and resource reference browser)
+
+- Added read-only `.seq` ScriptedImporter / SeqScriptLibrary, registered as a matching-file ScriptableObject type for Unity Editor.
+- Displays the four big-endian header words, file size, first 128 bytes, printable null-terminated strings and resource categories.
+- Indexes candidate 32-bit big-endian pointers that precede the string, separately identifying those with the observed `16 00 00 00` prefix.
+- Reports literal unaligned byte-marker frequencies; **no unverified VM/opcode labels, Motion IDs, combo timings or gameplay events**.
+- Added search, resource category filter, pointer-candidate toggle, pagination and path copy. Usable from SeqImporter Inspector and **Tools > EMD2Unity > SEQ Browser**.
+- Format verified structurally against 12 CSD/GSD/SPC Sousei 1.02 SEQ examples (anm00/setup/cpu/assist). No character EMD parser, PEMT decoder, clip exporter, or Animation Preview modifications.
+- Live Unity 2022.3 compilation and Inspector UX testing pending.
+
+
 ## 0.4.0 (PEMT Animation Preview)
 
 - Added **Tools > EMD2Unity > PEMT Animation Preview** window with isolated 3D character preview.
