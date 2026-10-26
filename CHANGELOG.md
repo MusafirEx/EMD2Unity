@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.6 — conservatively accept larger, aligned PEMT declared file sizes
+
+- Investigated the `ACL00/motion/0000.pemt` v0.4.5 diagnostics: 66 nonzero motion pointers, all within the 777,040-byte physical file, 16-byte aligned, strictly ordered, and a readable last motion descriptor table. Header declares 1,194,384 bytes, so physical and declared sizes differ.
+- The importer now **conditionally** accepts a header-declared size larger than the physical file only if both are 16-byte aligned, the declaration stays within the existing 128 MiB file cap, and the original pointer/motion/track metadata validation succeeds for every block. Smaller declared sizes, malformed pointers and invalid track bounds remain errors.
+- Stores the declared size/mismatch in PEMT imported metadata and displays a visible Inspector warning for accepted mismatches. Successful import is **not** proof that every ACL keyframe payload decodes correctly.
+- Bumps PEMT ScriptedImporter revision to 4 to re-import formerly rejected ACL files automatically.
+- Does not alter the keyframe decoder, .anim Export Selected/All, in-memory Animation Preview, EMD, SEQ or CCM paths.
+- Offline validation: all 17 existing CSD/GSD/SPC sample PEMTs pass with original size headers and with synthetically enlarged declared-size headers. Live ACL Unity import and playback verification pending.
+
+
 ## 0.4.5 — read-only diagnostic for unsupported ACL PEMT
 
 - Adds **Tools > EMD2Unity > Diagnose Selected PEMT Binary**. Select a PEMT source file (including one with an import error) to copy an evidence report to the clipboard and Unity Console.

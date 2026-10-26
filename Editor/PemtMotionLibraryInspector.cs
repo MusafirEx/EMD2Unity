@@ -59,6 +59,13 @@ namespace MusafirEx.EMD2Unity
                 "Motion IDs and tracks can be inspected here. Experimental .anim export decodes float16 position/quaternion keyframes; pose composition remains under validation.",
                 MessageType.Info);
             EditorGUILayout.LabelField("File bytes", library.sourceByteCount.ToString("N0"));
+            EditorGUILayout.LabelField("Header declared bytes", library.headerDeclaredByteCount.ToString("N0"));
+            if (library.headerSizeMismatch)
+                EditorGUILayout.HelpBox(
+                    "This PEMT declares " + library.headerSizeDifference.ToString("N0") +
+                    " bytes more than its physical length. It passed pointer/track " +
+                    "metadata validation, but animation keyframe playback is not yet " +
+                    "verified for this file.", MessageType.Warning);
             EditorGUILayout.LabelField("Pointer slots", library.pointerTableEntries.ToString());
             EditorGUILayout.LabelField("Occupied Motion IDs", library.occupiedEntries.ToString());
             EditorGUILayout.LabelField("Track descriptors", library.trackCount.ToString("N0"));

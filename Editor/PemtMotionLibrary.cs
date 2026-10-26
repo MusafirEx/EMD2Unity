@@ -36,6 +36,9 @@ namespace MusafirEx.EMD2Unity
     public sealed class PemtMotionLibrary : ScriptableObject
     {
         [HideInInspector] public int sourceByteCount;
+        [HideInInspector] public int headerDeclaredByteCount;
+        [HideInInspector] public bool headerSizeMismatch;
+        [HideInInspector] public int headerSizeDifference;
         [HideInInspector] public int pointerTableEntries;
         [HideInInspector] public int occupiedEntries;
         [HideInInspector] public int trackCount;

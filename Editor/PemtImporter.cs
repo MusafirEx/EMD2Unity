@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace MusafirEx.EMD2Unity
 {
-    [ScriptedImporter(3, "pemt")]
+    [ScriptedImporter(4, "pemt")]
     public sealed class PemtImporter : ScriptedImporter
     {
         public override void OnImportAsset(AssetImportContext ctx)
@@ -27,6 +27,15 @@ namespace MusafirEx.EMD2Unity
                 library = ScriptableObject.CreateInstance<PemtMotionLibrary>();
                 library.importError = ex.Message;
                 ctx.LogImportError("EMD2Unity PEMT: " + ex.Message);
+            }
+            if (library.headerSizeMismatch && string.IsNullOrEmpty(library.importError))
+            {
+                ctx.LogImportWarning(
+                    "EMD2Unity PEMT: header declares " + library.headerDeclaredByteCount +
+                    " bytes, physical file has " + library.sourceByteCount +
+                    " bytes. Accepted as an aligned size-mismatch variant after " +
+                    "validating indexed motion/track bounds. Animation keyframes " +
+                    "still require visual or export verification.");
             }
             library.name = Path.GetFileNameWithoutExtension(ctx.assetPath) + " [PEMT Motions]";
             ctx.AddObjectToAsset("motions", library);
@@ -79,8 +88,17 @@ namespace MusafirEx.EMD2Unity
                 throw new InvalidDataException("PEMT: invalid pointer count." + details);
             if (tableStart != 0x10)
                 throw new InvalidDataException("PEMT: unexpected pointer table offset; expected 0x10." + details);
-            if (declaredBytes != data.Length)
-                throw new InvalidDataException("PEMT: declared and actual file sizes differ." + details);
+            bool sizeMismatch = declaredBytes != data.Length;
+            // Some observed ACL PEMTs have a larger header size than their
+            // physical file, even though all indexed pointers are in range.
+            // Accept this ONLY for aligned, larger declared sizes, and ONLY
+            // if the entire pointer/track structure below still validates.
+            // Never use declaredBytes for buffer access.
+            if (sizeMismatch &&
+                (declaredBytes <= data.Length || declaredBytes > MaxFileSize ||
+                 (declaredBytes & 0xF) != 0 || (data.Length & 0xF) != 0))
+                throw new InvalidDataException(
+                    "PEMT: unsupported declared/physical file-size mismatch." + details);
             if ((long)tableStart + pointerCount * 4L > data.Length)
                 throw new InvalidDataException("PEMT: pointer table extends past end of file." + details);
 
@@ -104,6 +122,9 @@ namespace MusafirEx.EMD2Unity
 
             PemtMotionLibrary library = ScriptableObject.CreateInstance<PemtMotionLibrary>();
             library.sourceByteCount = data.Length;
+            library.headerDeclaredByteCount = declaredBytes;
+            library.headerSizeMismatch = sizeMismatch;
+            library.headerSizeDifference = declaredBytes - data.Length;
             library.pointerTableEntries = pointerCount;
             library.occupiedEntries = ids.Count;
 

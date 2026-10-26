@@ -19,7 +19,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.4.5.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.4.6.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
@@ -94,6 +94,12 @@ Version 0.4.4 identifies the exact failed validation field for previously unsupp
 Select a failing `.pemt` file in Unity's Project window. Choose **Tools → EMD2Unity → Diagnose Selected PEMT Binary**. The read-only diagnostic copies a report to your clipboard and Unity Console: big-endian header words, actual and declared bytes, table boundaries, pointer-count statistics, out-of-bounds pointers, first/last motion header and raw duration. The file itself is never changed. Paste the report into the issue or analysis conversation.
 
 **Do not assume compressed or truncated data solely from a declared-size mismatch.** Unsupported files remain rejected until their actual binary structure is verified. Existing PEMT Animation Preview and Export All behavior remains unchanged.
+
+### Aligned declared-size PEMT variants (v0.4.6)
+
+Some ACL files have a header-declared size larger than the physical file size, even though every pointer reported by the diagnostics is within the physical file. In **v0.4.6**, these files are no longer rejected solely because of this difference, provided declared > actual, both sizes are aligned to 16 bytes, the declaration fits within the file-size limit, and **all motion and track metadata bounds validate**. Accepted files show a **yellow Inspector warning**. Other malformed files remain rejected.
+
+Update the package, reimport `ACL/ACL00/motion/0000.pemt`, and check whether it now contains the expected 66 motion entries. Then test several animations using PEMT Animation Preview and Export All. Successful metadata import alone does not prove keyframe decode or correct skeletal playback.
 
 ## Status
 
