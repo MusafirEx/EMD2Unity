@@ -2,7 +2,7 @@
 
 Native **Unity 2022.3+** Editor package for experimenting with PS3 Kamen Rider *Battride War / Battride War Genesis (Sousei)* `.EMD` models. The parser was rewritten in C# based on the format research of [Random Talking Bush](https://github.com/RandomTBush/RTB-3DSMax-Scripts/blob/main/Scripts/KamenRiderPS3_EMD.ms).
 
-> **Experimental:** The Editor assembly was previously compiled in Unity 2022.3.62f3. Version 0.3.2 fixes the PEMT Inspector's motion/model selection. Experimental AnimationClip export decodes position and quaternion keyframes; exact in-game pose composition still requires testing. The EMD model importer remains unchanged from v0.1.5. Unity rendering, rig and shader equivalence remain pending. It may require fixes for particular models.
+> **Experimental:** The Editor assembly was previously compiled in Unity 2022.3.62f3. Version 0.3.3 makes PEMT Inspector controls interactive when selecting a .pemt source file. The previous UI was attached to the generated ScriptableObject, which Unity displays read-only. A separate PEMT Motion Browser window is also available. The EMD model importer remains unchanged from v0.1.5. Unity rendering, rig and shader equivalence remain pending. It may require fixes for particular models.
 
 ## Install directly from this GitHub repository
 
@@ -19,7 +19,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.3.2.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.3.3.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
@@ -33,11 +33,11 @@ Then in Unity select **Assets → Import Package → Custom Package...** and sel
 5. In the **Materials** inspector tab click **Prepare Nearby _NO Textures as Normal Maps** to convert supported `_NO` texture import settings and enable normal linking. This modifies only nearby `_NO` texture import settings, then reimports the EMD; it does not convert the underlying PS3 normal-map encoding. The tool also accepts already configured Normal maps. Specular linking is experimental and shader-dependent.
 6. Change **Reverse Triangle Winding** if faces are inverted, and test the rig by moving bones.
 
-### PEMT motion inspector and experimental AnimationClip export (v0.3.1)
+### PEMT motion inspector and experimental AnimationClip export (v0.3.3)
 
 1. Drop an extracted `*.pemt` in any `Assets/` directory, for example `Assets/KRBWS/CSD/CSD00/motion/0000.pemt`.
-2. Unity imports the file as a `PemtMotionLibrary` ScriptableObject. Select it and use the read-only Inspector.
-3. Filter Motion IDs in hexadecimal (for example `0x140`) or decimal (for example `320`), then select a motion using the **Select Motion ID** dropdown.
+2. Unity imports the file as a `PemtMotionLibrary` ScriptableObject. Click the **.pemt file** (not its ScriptableObject subasset) in the Project window. The **PemtImporter** custom Inspector now exposes active controls. Alternatively, use **Tools → EMD2Unity → PEMT Motion Browser** for an independent interactive window.
+3. Use the interactive Inspector or Browser window to filter Motion IDs in hexadecimal (for example `0x140`) or decimal (for example `320`), then select a motion using the **Select Motion ID** dropdown.
 4. Assign a corresponding EMD model via the **Nearby EMD Models** dropdown, a Project asset, or a linked EMD prefab instance in the Hierarchy (e.g. `CSR00.emd` for CSD) to **EMD Model**.
 5. Click **Export Selected Motion to .anim** and choose the output path. Test the clip in Unity Animation Window or an Animator Controller on a duplicate matching EMD prefab.
 6. If a pose looks twisted, try the alternate **Delta Rotation First** option. Position data is added to the EMD rest-pose position; quaternion motion is multiplied by rest-pose rotation. Rest-pose composition and engine interpolation still require visual validation.

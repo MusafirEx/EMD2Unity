@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.3 (fix read-only PEMT Inspector)
+
+- Root cause: the PEMT custom Inspector targeted the *generated* PemtMotionLibrary ScriptableObject. When selecting a source PEMT file, Unity's ScriptedImporter presents that generated asset in read-only mode.
+- Added PemtImporterInspector : ScriptedImporterEditor, registered for PemtImporter, and renders motion/model controls directly in the importer's interactive inspector.
+- Refactored the existing UI into PemtMotionPanel so both the ScriptedImporter inspector and standalone window share the same editing controls and export action.
+- Added Tools > EMD2Unity > PEMT Motion Browser; opens a separate window and supports selecting PEMT file, Motion ID, nearby EMD model and exporting AnimationClips even if the Inspector is locked.
+- No changes to PEMT binary parser, clip decoder, or EMD model importer (which retains v0.1.5 behavior).
+- Compiling and live UI usability still need verification in Unity 2022.3.
+
+
 ## 0.3.2 (PEMT Inspector model and motion selection)
 
 - Fixed EMD Model ObjectField rejecting prefab instances from the Unity Hierarchy (allowSceneObjects=true).

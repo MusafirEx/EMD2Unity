@@ -1,4 +1,4 @@
-// Read-only PEMT metadata Inspector. No animation decoding is implied by the UI.
+// PEMT Motion GUI drawn directly from the ScriptedImporter Inspector or EditorWindow.
 #if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
@@ -8,8 +8,9 @@ using UnityEngine;
 
 namespace MusafirEx.EMD2Unity
 {
-    [CustomEditor(typeof(PemtMotionLibrary))]
-    public sealed class PemtMotionLibraryInspector : Editor
+    // UI state is not serialized to the imported library: the source .pemt is read-only,
+    // but the motion selection, model assignment and export are editor-side controls.
+    internal sealed class PemtMotionPanel
     {
         private string motionFilter = "";
         private int selectedMotionId = -1;
@@ -41,9 +42,13 @@ namespace MusafirEx.EMD2Unity
             return result;
         }
 
-        public override void OnInspectorGUI()
+        public void Draw(PemtMotionLibrary library)
         {
-            var library = (PemtMotionLibrary)target;
+            if (library == null)
+            {
+                EditorGUILayout.HelpBox("PEMT motion library is not yet imported.", MessageType.Warning);
+                return;
+            }
             EditorGUILayout.LabelField("PEMT Motion Container", EditorStyles.boldLabel);
             if (!string.IsNullOrEmpty(library.importError))
             {
@@ -170,6 +175,19 @@ namespace MusafirEx.EMD2Unity
                     "None (timeline track)" : "0x" + track.dataEndRelative.ToString("X"));
                 EditorGUI.indentLevel--;
             }
+        }
+    }
+
+    // Retained for explicit subasset selection; clicking a .pemt file uses
+    // PemtImporterInspector instead, bypassing Unity's read-only asset wrapper.
+    [CustomEditor(typeof(PemtMotionLibrary))]
+    public sealed class PemtMotionLibraryInspector : Editor
+    {
+        private readonly PemtMotionPanel panel = new PemtMotionPanel();
+
+        public override void OnInspectorGUI()
+        {
+            panel.Draw((PemtMotionLibrary)target);
         }
     }
 }
