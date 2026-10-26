@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.6 (nonstandard EMD stage index layouts)
+
+- Fixed a newly observed failure in `AREA00.emd`: `Triangle index count 64 is not divisible by 3 in enkei`, after the v0.3.5 28-byte UV layout improvement.
+- Inspect index buffer byte length before interpreting a non-multiple-of-three field: support a per-triangle field ONLY when a full 3-index-per-triangle buffer (plus under 16 bytes alignment) exists.
+- Alternatively recognize one or two explicit trailing zero/0xFFFF padding indices and trim only those marker values; otherwise report that topology cannot safely be determined.
+- Log a Unity import warning when the fallback is used, including the original field and mesh name. Do not silently fabricate triangles for unknown topology.
+- Bumped the EMD ScriptedImporter version 5 to 6, forcing reimport. Existing EMD character paths and PEMT animation export are unchanged.
+- Offline checked first index groups of 19 DLC EMD samples: all use the existing divisible-by-three case, so the fallback is isolated to unusual stage geometries.
+- Visual validation of the STG01 stage geometry in Unity is still pending. The actual AREA00 binary was not available for offline inspection.
+
+
 ## 0.3.5 (stage EMD UV layout and empty-model diagnostics)
 
 - Fixed stage `AREA00.emd` import failure `Unsupported UV stride 28 (jimen_naka)` by supporting the 28-byte UV/color layout already covered by the parser's multi-UV branch.

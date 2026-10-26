@@ -16,7 +16,7 @@ using UnityEngine.Rendering;
 
 namespace MusafirEx.EMD2Unity
 {
-    [ScriptedImporter(5, "emd")]
+    [ScriptedImporter(6, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         [Header("Model")]
@@ -39,6 +39,8 @@ namespace MusafirEx.EMD2Unity
                 byte[] data = File.ReadAllBytes(ctx.assetPath);
                 var document = EmdParser.Parse(data);
                 CreateUnityAssets(ctx, document);
+                foreach (string warning in document.ImportWarnings)
+                    ctx.LogImportWarning(warning);
             }
             catch (Exception e)
             {
@@ -438,6 +440,7 @@ namespace MusafirEx.EMD2Unity
         public readonly List<EmdGroup> Groups = new List<EmdGroup>();
         public int DeclaredPolygonCount;
         public int EmptyGroupCount;
+        public readonly List<string> ImportWarnings = new List<string>();
     }
 
     // Big endian byte reader with strict bounds checks (PS3 EMD format).
@@ -633,15 +636,73 @@ namespace MusafirEx.EMD2Unity
                     int pointCount = r.U16();
                     // EMD stores the number of triangle *indices* here, not the number of faces.
                     // Each triangle contains three 16-bit indices; indexBytes also includes padding.
-                    int indexCount = r.U16(); r.I32();
+                    int declaredIndexCount = r.U16(); r.I32();
                     ValidateCount(pointCount, "vertices", 65535);
-                    ValidateCount(indexCount, "triangle indices", 65535);
-                    if (indexCount % 3 != 0)
-                        throw new InvalidDataException("Triangle index count " + indexCount + " is not divisible by 3 in " + name);
+                    ValidateCount(declaredIndexCount, "triangle indices", 65535);
                     if (pointCount == 0)
                     {
                         doc.EmptyGroupCount++;
                         continue;
+                    }
+
+                    // Most character EMD files store an index count here.
+                    // Stage records may instead store a face count (3 indices/face),
+                    // or include a padded trailing index. Inspect the ACTUAL index
+                    // buffer size, rather than always assuming triangles or clipping
+                    // one usable index. Ambiguous topology remains an import error.
+                    int indexCount = declaredIndexCount;
+                    if (indexCount % 3 != 0)
+                    {
+                        int availableIndices = indexBytes / sizeof(ushort);
+                        long possibleFaceIndices = (long)declaredIndexCount * 3L;
+                        long expectedFaceBytes = possibleFaceIndices * sizeof(ushort);
+                        int extraFaceBytes = (int)(indexBytes - expectedFaceBytes);
+                        if (possibleFaceIndices > 0 &&
+                            possibleFaceIndices <= 65535 &&
+                            extraFaceBytes >= 0 && extraFaceBytes < 16)
+                        {
+                            // Matches a full triangle list with at most 15 padding bytes.
+                            indexCount = (int)possibleFaceIndices;
+                            doc.ImportWarnings.Add("EMD " + name +
+                                ": nonstandard index field " + declaredIndexCount +
+                                " interpreted as triangle count based on " +
+                                indexBytes + "-byte index buffer (" + indexCount + " indices).");
+                        }
+                        else
+                        {
+                            int paddingCount = indexCount % 3;
+                            bool looksPadded = indexBytes >= (long)indexCount * 2L &&
+                                indexJump >= 0 &&
+                                (long)indexJump + (long)indexCount * 2L <= r.Length;
+                            if (looksPadded)
+                            {
+                                int returnPosition = r.Position;
+                                r.Seek(indexJump + (long)(indexCount - paddingCount) * 2L);
+                                for (int pad = 0; pad < paddingCount; ++pad)
+                                {
+                                    ushort marker = r.U16();
+                                    if (marker != 0 && marker != 0xFFFF)
+                                        looksPadded = false;
+                                }
+                                r.Seek(returnPosition);
+                            }
+                            if (looksPadded)
+                            {
+                                indexCount -= paddingCount;
+                                doc.ImportWarnings.Add("EMD " + name +
+                                    ": ignored " + paddingCount +
+                                    " zero/FFFF index-buffer padding value(s) to form " +
+                                    (indexCount / 3) + " complete triangles.");
+                            }
+                            else
+                                throw new InvalidDataException(
+                                    "Unsupported EMD index layout in " + name +
+                                    ": declared field=" + declaredIndexCount +
+                                    ", index buffer bytes=" + indexBytes +
+                                    ", capacity=" + availableIndices +
+                                    ". Could be a triangle strip or another topology; " +
+                                    "no triangle reconstruction attempted.");
+                        }
                     }
                     int uvStride = uvLength / pointCount;
                     if (uvStride * pointCount != uvLength || uvStride % 4 != 0 || uvStride < 8 || uvStride > 28)
