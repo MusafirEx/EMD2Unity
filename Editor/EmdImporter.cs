@@ -16,7 +16,7 @@ using UnityEngine.Rendering;
 
 namespace MusafirEx.EMD2Unity
 {
-    [ScriptedImporter(7, "emd")]
+    [ScriptedImporter(8, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         [Header("Model")]
@@ -721,15 +721,75 @@ namespace MusafirEx.EMD2Unity
                     // handles these records and selects the first trailing UV set.
                     // All earlier 8..24-byte layouts retain their prior behavior.
                     int uvSize = uvStride / 4;
-                    if (vertexBytes / 12 < pointCount)
-                        throw new InvalidDataException("Vertex buffer smaller than declared point count in " +
-                            name + " / polygon " + p + " / group " + g +
-                            ": declared=" + pointCount + " vertices (" + ((long)pointCount * 12L) +
-                            " bytes), positionBuffer=" + vertexBytes +
-                            " bytes, vertexOffset=0x" + vertexJump.ToString("X") +
-                            ", uvLength=" + uvLength + " bytes, indexBytes=" + indexBytes +
-                            ", polygonOffset=0x" + start.ToString("X") +
-                            ". Geometry layout not confirmed; cannot safely decode this group.");
+                    // Stage-EMD evidence (STG31/AREA01): some static polygons
+                    // report 0x4000 position bytes although the actual XYZ stream
+                    // continues contiguously past that boundary. We only accept the
+                    // longer stream when it is completely inside this SAME polygon,
+                    // follows the complete index buffer without any gap, and indices
+                    // demonstrably address vertices beyond the nominal 0x4000 chunk.
+                    // Other EMD layouts keep the original strict size validation.
+                    long requiredPositionBytes = (long)pointCount * 12L;
+                    if (requiredPositionBytes > vertexBytes)
+                    {
+                        long polygonEnd = (long)start + recordSize;
+                        long physicalPositionEnd = (long)vertexJump + requiredPositionBytes;
+                        long physicalIndexEnd = (long)indexJump + indexBytes;
+                        bool contiguousStaticStage =
+                            headerType == 0 && groupCount == 1 && g == 0 &&
+                            vertexBytes == 0x4000 &&
+                            indexJump >= start &&
+                            indexCount > 0 &&
+                            physicalIndexEnd == vertexJump &&
+                            physicalPositionEnd <= polygonEnd &&
+                            physicalPositionEnd <= r.Length &&
+                            (long)indexJump + indexCount * 2L <= vertexJump;
+
+                        int highestReferencedVertex = -1;
+                        if (contiguousStaticStage)
+                        {
+                            // Read only the known index span and preserve the
+                            // group-header cursor before continuing. Invalid
+                            // indices still fail rather than making corrupt mesh.
+                            int savedPosition = r.Position;
+                            try
+                            {
+                                r.Seek(indexJump);
+                                for (int index = 0; index < indexCount; ++index)
+                                {
+                                    int referenced = r.U16();
+                                    if (referenced >= pointCount)
+                                        throw new InvalidDataException(
+                                            "Triangle references invalid stage vertex " +
+                                            referenced + " in " + name + " (pointCount=" + pointCount + ").");
+                                    if (referenced > highestReferencedVertex)
+                                        highestReferencedVertex = referenced;
+                                }
+                            }
+                            finally { r.Seek(savedPosition); }
+                        }
+                        if (!contiguousStaticStage ||
+                            highestReferencedVertex < vertexBytes / 12)
+                            throw new InvalidDataException("Vertex buffer smaller than declared point count in " +
+                                name + " / polygon " + p + " / group " + g +
+                                ": declared=" + pointCount + " vertices (" + requiredPositionBytes +
+                                " bytes), positionBuffer=" + vertexBytes +
+                                " bytes, vertexOffset=0x" + vertexJump.ToString("X") +
+                                ", uvLength=" + uvLength + " bytes, indexBytes=" + indexBytes +
+                                ", polygonOffset=0x" + start.ToString("X") +
+                                ", polygonEnd=0x" + polygonEnd.ToString("X") +
+                                ", contiguousIndexEnd=0x" + physicalIndexEnd.ToString("X") +
+                                ", fullVertexEnd=0x" + physicalPositionEnd.ToString("X") +
+                                ", maximumIndex=" + highestReferencedVertex +
+                                ". No verified contiguous stage position layout.");
+
+                        doc.ImportWarnings.Add("EMD stage " + name + " / polygon " + p +
+                            ": accepted contiguous XYZ vertex stream of " +
+                            requiredPositionBytes + " bytes beyond reported 0x4000 chunk. " +
+                            "Index max=" + highestReferencedVertex +
+                            ", position end=0x" + physicalPositionEnd.ToString("X") +
+                            ", polygon end=0x" + polygonEnd.ToString("X") +
+                            ". Verify mesh visually in Scene view.");
+                    }
                     if (indexBytes / sizeof(ushort) < indexCount)
                         throw new InvalidDataException("Triangle index buffer too small in " + name +
                             " (declared " + indexCount + " indices / " + (indexCount * sizeof(ushort)) +

@@ -19,7 +19,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.4.7.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.4.8.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
@@ -106,6 +106,12 @@ Update the package, reimport `ACL/ACL00/motion/0000.pemt`, and check whether it 
 Stage meshes may declare more vertices than their 16 KiB position chunk can hold (e.g. 2,155 vertices = 25,860 xyz-float bytes, but the buffer claims 16,384). The model importer **does not guess** the location of missing vertices. Select a Stage `.emd` asset, open its **Model** tab, and click **Diagnose Stage EMD Buffers (Read-only)**, or use **Tools → EMD2Unity → Diagnose Selected Stage EMD**. Paste the copied Console report into the analysis conversation.
 
 The report checks the **first mesh group of each polygon only**: header offsets, point count, index references, UV/vertex byte lengths and candidate vertex bytes after the declared boundary. Multi-group decoding, index topology, and accurate position recovery remain pending until a real Stage EMD sample or report can verify the structure. Existing Character EMD importer behavior is unchanged.
+
+### Stage EMD 0x4000 position-stream fix (v0.4.8)
+
+For observed Stage EMD polygons that report **0x4000 bytes** for position data but have more vertices, the importer can now read a longer contiguous XYZ stream **only** when index/polygon boundaries and out-of-chunk vertex references provide structural confirmation. Invalid or unfamiliar layouts are still rejected. Each accepted oversized polygon emits a Unity import warning for visual verification.
+
+In particular, `STG31/model/AREA01.emd` reported two such meshes: `obj_10` (2220 vertices) and `obj_11` (1916 vertices). Reimport it using EMD2Unity **v0.4.8** and verify the resulting geometry, UV and triangle topology in Scene view. The separate **Diagnose Stage EMD Buffers** tool remains available.
 
 ## Status
 

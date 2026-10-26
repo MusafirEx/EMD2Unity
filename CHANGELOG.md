@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.8 — guarded contiguous Stage EMD XYZ streams
+
+- STG31/AREA01 diagnosis shows `obj_10` (2220 vertices, index maximum 2219) and `obj_11` (1916 vertices, maximum 1915) each report 0x4000 vertex bytes even though their XYZ triples plausibly continue beyond that boundary. For `obj_10`, the complete float3 stream ends 48 bytes before the next polygon.
+- Only when **headerType=0, one group, group 0, vertexBytes=0x4000, the index buffer ends at the vertex stream, all indices are valid, some indices exceed the nominal chunk capacity, and the entire full XYZ stream fits inside the polygon record** does the parser accept a longer contiguous position stream.
+- Other cases still fail safely with extra polygon/index boundary diagnostics. A warning identifies every accepted stage polygon; visual verification remains required.
+- Bumps EMD ScriptedImporter revision from 7 to 8 to reimport stage models. Ordinary character EMD files, PEMT decoder/Preview/Export All, SEQ and CCM code are unchanged.
+- This is a conservative layout extension based on the supplied STG31/AREA01 report, not a claim that every Stage EMD variant is solved. Unity Editor mesh/compile verification pending.
+
+
 ## 0.4.7 — Stage EMD buffer/index diagnostics
 
 - Added **Tools > EMD2Unity > Diagnose Selected Stage EMD**, also available in the EMD Model Inspector.
