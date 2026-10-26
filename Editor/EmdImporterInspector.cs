@@ -68,6 +68,11 @@ namespace MusafirEx.EMD2Unity
                         "Optional stage-EMD recovery: keeps valid polygon records if others have unsupported vertex/index layouts. Skipped polygons remain missing and detailed reasons are written to Console. Off by default to preserve strict import behavior. Click Apply to reimport.",
                         MessageType.Info);
                     EditorGUILayout.HelpBox("Normals are recalculated. If the model appears inside-out, toggle Reverse Triangle Winding.", MessageType.Info);
+                    if (GUILayout.Button("Diagnose Stage EMD Buffers (Read-only)"))
+                    {
+                        if (selectedEmd != null)
+                            EmdStageBinaryDiagnostics.DiagnosePath(selectedEmd.assetPath);
+                    }
                     break;
                 case 1:
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("importSkeleton"), new GUIContent("Import Skeleton & Skin Weights"));

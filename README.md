@@ -19,7 +19,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.4.6.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.4.7.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
@@ -100,6 +100,12 @@ Select a failing `.pemt` file in Unity's Project window. Choose **Tools → EMD2
 Some ACL files have a header-declared size larger than the physical file size, even though every pointer reported by the diagnostics is within the physical file. In **v0.4.6**, these files are no longer rejected solely because of this difference, provided declared > actual, both sizes are aligned to 16 bytes, the declaration fits within the file-size limit, and **all motion and track metadata bounds validate**. Accepted files show a **yellow Inspector warning**. Other malformed files remain rejected.
 
 Update the package, reimport `ACL/ACL00/motion/0000.pemt`, and check whether it now contains the expected 66 motion entries. Then test several animations using PEMT Animation Preview and Export All. Successful metadata import alone does not prove keyframe decode or correct skeletal playback.
+
+### Stage EMD vertex/index diagnostics (v0.4.7)
+
+Stage meshes may declare more vertices than their 16 KiB position chunk can hold (e.g. 2,155 vertices = 25,860 xyz-float bytes, but the buffer claims 16,384). The model importer **does not guess** the location of missing vertices. Select a Stage `.emd` asset, open its **Model** tab, and click **Diagnose Stage EMD Buffers (Read-only)**, or use **Tools → EMD2Unity → Diagnose Selected Stage EMD**. Paste the copied Console report into the analysis conversation.
+
+The report checks the **first mesh group of each polygon only**: header offsets, point count, index references, UV/vertex byte lengths and candidate vertex bytes after the declared boundary. Multi-group decoding, index topology, and accurate position recovery remain pending until a real Stage EMD sample or report can verify the structure. Existing Character EMD importer behavior is unchanged.
 
 ## Status
 

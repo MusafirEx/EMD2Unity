@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.7 — Stage EMD buffer/index diagnostics
+
+- Added **Tools > EMD2Unity > Diagnose Selected Stage EMD**, also available in the EMD Model Inspector.
+- Performs read-only structural inspection of each polygon's FIRST mesh group: point count, position chunk bytes/capacity, vertex/index offsets, UV length, maximum index, and whether indexed faces refer beyond the advertised 16 KiB position chunk.
+- Displays raw bytes and a float3 candidate immediately following the declared position chunk, to distinguish contiguous data from a split/alternate vertex layout. Reports both index-count and possible face-count interpretations where their buffers permit.
+- Based on recurring stage errors with vertexBytes=0x4000 while pointCount requires >16 KiB. No blind geometry reconstruction or speculative stream merging; other mesh groups are explicitly NOT decoded in this diagnostic.
+- Verified equivalent Python first-group field-offset scanner on all 19 DLC character EMDs without a vertex-count mismatch. Stage sample bytes still needed to establish the correct repair.
+- **No changes** to EmdParser, character geometry, PEMT Animation Preview/Export All, SEQ or CCM.
+
+
 ## 0.4.6 — conservatively accept larger, aligned PEMT declared file sizes
 
 - Investigated the `ACL00/motion/0000.pemt` v0.4.5 diagnostics: 66 nonzero motion pointers, all within the 777,040-byte physical file, 16-byte aligned, strictly ordered, and a readable last motion descriptor table. Header declares 1,194,384 bytes, so physical and declared sizes differ.

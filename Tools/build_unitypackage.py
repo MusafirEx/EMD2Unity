@@ -10,6 +10,7 @@ FILES = (
     "Editor",
     "Editor/EmdImporter.cs",
     "Editor/EmdImporterInspector.cs",
+    "Editor/EmdStageBinaryDiagnostics.cs",
     "Editor/PemtImporter.cs",
     "Editor/PemtBinaryDiagnostics.cs",
     "Editor/PemtMotionLibrary.cs",
@@ -62,7 +63,7 @@ def build(destination):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", default="EMD2Unity-v0.4.6.unitypackage")
+    parser.add_argument("--output", default="EMD2Unity-v0.4.7.unitypackage")
     args = parser.parse_args()
     output = pathlib.Path(args.output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
