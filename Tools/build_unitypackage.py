@@ -11,6 +11,7 @@ FILES = (
     "Editor/EmdImporter.cs",
     "Editor/EmdImporterInspector.cs",
     "Editor/PemtImporter.cs",
+    "Editor/PemtMotionLibrary.cs",
     "Editor/PemtMotionLibraryInspector.cs",
     "Editor/MusafirEx.EMD2Unity.Editor.asmdef",
 )
@@ -46,7 +47,7 @@ def build(destination):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", default="EMD2Unity-v0.2.0.unitypackage")
+    parser.add_argument("--output", default="EMD2Unity-v0.2.1.unitypackage")
     args = parser.parse_args()
     output = pathlib.Path(args.output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.1 (fix PEMT ScriptableObject registration)
+
+- Fixed Unity `InvalidOperationException: Failed to add object of type PemtMotionLibrary` during `*.pemt` import.
+- Moved `PemtMotionLibrary` (and serializable metadata classes) into new `Editor/PemtMotionLibrary.cs` with stable Unity `.meta`; Unity requires ScriptableObject classes to be declared in a matching filename for asset registration.
+- Kept `PemtImporter.cs` responsible only for importer and data parsing, bumped its `ScriptedImporter` version 1 → 2 to reimport failed PEMT assets.
+- Added new file to the classic `.unitypackage` build list. EMD parser and normal-texture workflow remain unchanged from v0.1.5.
+- Reviewed all 17 PEMT samples: 309 motion blocks / 18,938 track descriptors pass structural pointer checks. Live Unity retest is pending.
+
+
 ## 0.2.0 (PEMT read-only motion container importer)
 
 - Added `PemtImporter` creating a `PemtMotionLibrary` ScriptableObject for `*.pemt` files.
