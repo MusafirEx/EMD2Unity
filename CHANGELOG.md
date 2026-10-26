@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.6 (DDS normal-map support)
+
+- Fixed normal texture linking for Unity 2022.3 DDSImporter, which does not expose TextureImporterType.NormalMap.
+- Materials Inspector converts each nearby _NO.dds to a separate _NO_EMD2Unity.png via GPU decompress/readback, then marks that PNG as Normal map and enables linking.
+- Prefer the generated PNG when assigning Unity shader _BumpMap/_NormalMap, and preserve source DDS textures.
+- The conversion action never runs inside OnImportAsset, never overwrites an existing derivative, and reports individual failures.
+- Bumped ScriptedImporter version 4->5. No live Unity compile/render verification yet.
+- PS3 normal-map channel packing and inverted green-channel conventions still require visual validation.
+
+
 ## 0.1.5 (normal texture import setup)
 
 - Materials Inspector: **Prepare Nearby _NO Textures as Normal Maps** converts neighbouring _NO textures to Unity Normal-map importer type, enables normal linking and reimports the selected EMD.
