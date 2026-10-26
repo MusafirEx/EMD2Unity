@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.2 (read-only CCM combo record Inspector)
+
+- Added a `CCM\\0` ScriptedImporter, `CcmComboLibrary` ScriptableObject and **Tools > EMD2Unity > CCM Browser**.
+- Parses the confirmed little-endian layout: 16-byte header, 8-byte ID/pointer entries, fixed 0x80-byte records and 16-byte empty footer. Strictly validates lengths, offsets and IDs.
+- Shows each raw record's byte offset, values at +0x14/+0x18, codes at +0x1C/+0x68, and all 32 raw 32-bit words. Reports observed A-B=20 and whether link indexes exist.
+- Clickable low16 link navigation and clipboard raw-word export. Semantic meanings (timing units, combo inputs, motion mapping, 0x0007 code family and 0x57) remain explicitly **unverified**.
+- Structure cross-checked against the 3 DLC CCM samples (CSD/GSD/SPC, 19 total records); no changes to EMD, PEMT or SEQ logic.
+- Unity 2022.3 live Editor compile and GUI testing pending.
+
+
 ## 0.4.1 (SEQ binary inspector and resource reference browser)
 
 - Added read-only `.seq` ScriptedImporter / SeqScriptLibrary, registered as a matching-file ScriptableObject type for Unity Editor.

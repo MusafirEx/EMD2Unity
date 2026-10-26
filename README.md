@@ -2,7 +2,7 @@
 
 Native **Unity 2022.3+** Editor package for experimenting with PS3 Kamen Rider *Battride War / Battride War Genesis (Sousei)* `.EMD` models. The parser was rewritten in C# based on the format research of [Random Talking Bush](https://github.com/RandomTBush/RTB-3DSMax-Scripts/blob/main/Scripts/KamenRiderPS3_EMD.ms).
 
-> **Experimental:** The Editor assembly was previously compiled in Unity 2022.3.62f3. Version 0.4.1 adds a read-only SEQ Inspector/Browser for big-endian header words, referenced resource strings and raw byte-marker counts (without guessing VM opcodes). Version 0.4.0 added in-Editor PEMT Animation Preview with Play/Pause/Stop, scrubbing, orbit and zoom. Version 0.3.7 adds optional partial recovery of supported polygon records and detailed vertex buffer diagnostics for stage EMDs. Version 0.3.6 supported verifiable nonstandard triangle counts or trailing padding in EMD stage index buffers. Version 0.3.5 added 28-byte UV/color-record support for stage EMD models and flags imported EMD assets containing no renderable geometry. Version 0.3.4 adds batch export of all PEMT motions with transform keys to separate .anim files. The decoder is the same as the working single-motion export. Version 0.3.3 made PEMT Inspector controls interactive when selecting a .pemt source file. The previous UI was attached to the generated ScriptableObject, which Unity displays read-only. A separate PEMT Motion Browser window is also available. The EMD model importer remains unchanged from v0.1.5. Unity rendering, rig and shader equivalence remain pending. It may require fixes for particular models.
+> **Experimental:** The Editor assembly was previously compiled in Unity 2022.3.62f3. Version 0.4.2 adds a read-only CCM Inspector/Browser for 0x80-byte combo records. Version 0.4.1 added a read-only SEQ Inspector/Browser for big-endian header words, referenced resource strings and raw byte-marker counts (without guessing VM opcodes). Version 0.4.0 added in-Editor PEMT Animation Preview with Play/Pause/Stop, scrubbing, orbit and zoom. Version 0.3.7 adds optional partial recovery of supported polygon records and detailed vertex buffer diagnostics for stage EMDs. Version 0.3.6 supported verifiable nonstandard triangle counts or trailing padding in EMD stage index buffers. Version 0.3.5 added 28-byte UV/color-record support for stage EMD models and flags imported EMD assets containing no renderable geometry. Version 0.3.4 adds batch export of all PEMT motions with transform keys to separate .anim files. The decoder is the same as the working single-motion export. Version 0.3.3 made PEMT Inspector controls interactive when selecting a .pemt source file. The previous UI was attached to the generated ScriptableObject, which Unity displays read-only. A separate PEMT Motion Browser window is also available. The EMD model importer remains unchanged from v0.1.5. Unity rendering, rig and shader equivalence remain pending. It may require fixes for particular models.
 
 ## Install directly from this GitHub repository
 
@@ -19,7 +19,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.4.1.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.4.2.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
@@ -68,6 +68,14 @@ The PEMT parser uses big-endian header and 32-byte track descriptors. In the gam
 5. The Inspector does not change SEQ content or attempt an Animator Controller. The existing EMD stage importer and PEMT Animation Preview/export code remain unchanged.
 
 Tested structurally against 12 SEQ samples from DLC 1.02. Live Unity Editor compilation/GUI validation pending.
+
+### CCM Combo Inspector / Browser (v0.4.2)
+
+1. Place extracted `combo/0000.ccm` within `Assets/`. Unity imports a read-only `CcmComboLibrary`, displayed in the source Inspector or **Tools → EMD2Unity → CCM Browser**.
+2. Inspect the little-endian `CCM\\0` header, version marker, 8-byte ID/offset pointer entries, exact 128-byte records and terminal 16-byte empty footer.
+3. Select individual records to compare **+0x14** / **+0x18** timing-like integers, **+0x1C** code and **+0x68** link candidate (all raw). The observed difference `A-B=20` and link target validity are reported, but **frames/gameplay timing, animation IDs, looping and input-combo semantics are not established**.
+4. Click **Inspect Record #** to follow a low-16-bit link to a present record, open the **All 32 raw little-endian words** foldout, or copy raw offsets/values.
+5. The parser intentionally rejects malformed or unfamiliar layouts instead of guessing. It is based on structural cross-checking of three Sousei v1.02 DLC samples (CSD: 6 records, GSD: 7, SPC: 6). It does not generate Animator Controllers or play combo sequences. SEQ and PEMT functions are unchanged.
 
 ## Status
 
