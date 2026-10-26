@@ -16,7 +16,7 @@ using UnityEngine.Rendering;
 
 namespace MusafirEx.EMD2Unity
 {
-    [ScriptedImporter(5, "emd")]
+    [ScriptedImporter(4, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         [Header("Model")]
@@ -152,16 +152,13 @@ namespace MusafirEx.EMD2Unity
                             string normalName = stem + "_NO";
                             if (ematTextures.Any(t => t.Equals(normalName, StringComparison.OrdinalIgnoreCase)))
                             {
-                                // Use our dedicated PNG derivative where DDS is imported by DDSImporter
-                            // (DDS does not expose TextureImporterType.NormalMap).
-                            string normalPath = FindTexture(ctx.assetPath, normalName + "_EMD2Unity")
-                                ?? FindTexture(ctx.assetPath, normalName);
+                                string normalPath = FindTexture(ctx.assetPath, normalName);
                                 if (normalPath != null)
                                 {
                                     ctx.DependsOnSourceAsset(normalPath);
                                     var importer = AssetImporter.GetAtPath(normalPath) as TextureImporter;
-                                    // Unity DDSImporter does not expose TextureImporter.textureType.
-                                    // Our generated _NO_EMD2Unity.png is a regular TextureImporter asset.
+                                    // Unity normal-map packing requires an imported Normal map.
+                                    // Do not assign raw DDS as a normal map: it renders incorrectly.
                                     if (importer != null && importer.textureType == TextureImporterType.NormalMap)
                                     {
                                         Texture2D normal = AssetDatabase.LoadAssetAtPath<Texture2D>(normalPath);
@@ -174,8 +171,8 @@ namespace MusafirEx.EMD2Unity
                                     }
                                     else
                                         ctx.LogImportWarning("EMD normal texture '" + normalPath +
-                                            "' is not an imported Normal map. In the EMD Materials tab, click " +
-                                            "'Prepare Nearby Normal Maps (DDS to PNG)' to generate and link it.");
+                                            "' is not imported as a Normal map. In the EMD Materials tab, click " +
+                                            "'Prepare Nearby _NO Textures as Normal Maps' to fix this.");
                                 }
                             }
                         }
@@ -299,105 +296,41 @@ namespace MusafirEx.EMD2Unity
             if (doc.Groups.Count == 0) ctx.LogImportWarning("No polygon groups found.");
         }
 
-        // Editor action ONLY. DDSImporter (Unity 2022.3) cannot be set to NormalMap.
-        // Convert raw _NO.dds into a sibling _NO_EMD2Unity.png that uses TextureImporter.
-        // Keep source DDS untouched; never change asset importers during OnImportAsset.
-        internal static int PrepareNearbyNormalTextures(string emdPath,
-            out int matched, out int generated, out int failed)
+        // Called from the Inspector, never from OnImportAsset: changing an importer
+        // during its own import would cause nested imports/reimport loops.
+        // Every *_NO image in the model's adjacent textures directory is treated
+        // as a normal map; existing NormalMap importers are left unchanged.
+        internal static int PrepareNearbyNormalTextures(string emdPath, out int matched)
         {
             matched = 0;
-            generated = 0;
-            failed = 0;
-            int configured = 0;
+            int updated = 0;
             string parent = Path.GetDirectoryName(emdPath)?.Replace('\\', '/');
             if (string.IsNullOrEmpty(parent)) return 0;
             var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             string[] directories = { parent + "/textures", parent + "/Textures", parent };
             string[] extensions = { ".dds", ".png", ".tga", ".jpg", ".jpeg", ".bmp" };
-
             foreach (string directory in directories)
             {
                 if (!Directory.Exists(directory)) continue;
-                foreach (string path in Directory.EnumerateFiles(directory))
+                foreach (string file in Directory.EnumerateFiles(directory))
                 {
-                    if (!Path.GetFileNameWithoutExtension(path).EndsWith("_NO", StringComparison.OrdinalIgnoreCase) ||
-                        !extensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
+                    if (!Path.GetFileNameWithoutExtension(file).EndsWith("_NO", StringComparison.OrdinalIgnoreCase))
                         continue;
-                    string assetPath = path.Replace('\\', '/');
+                    if (!extensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
+                        continue;
+                    string assetPath = file.Replace('\\', '/');
                     if (!visited.Add(assetPath)) continue;
+                    var textureImporter = AssetImporter.GetAtPath(assetPath) as TextureImporter;
+                    if (textureImporter == null) continue;
                     matched++;
-
-                    try
-                    {
-                        string preparedPath = assetPath;
-                        if (Path.GetExtension(assetPath).Equals(".dds", StringComparison.OrdinalIgnoreCase))
-                        {
-                            preparedPath = Path.ChangeExtension(assetPath, null) + "_EMD2Unity.png";
-                            preparedPath = preparedPath.Replace('\\', '/');
-                            // Do not overwrite a hand-edited derivative. Delete it to regenerate.
-                            if (!File.Exists(preparedPath))
-                            {
-                                Texture2D dds = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
-                                if (dds == null) throw new InvalidDataException("DDS has no Texture2D asset");
-                                ConvertDdsTextureToPng(dds, preparedPath);
-                                generated++;
-                                AssetDatabase.ImportAsset(preparedPath, ImportAssetOptions.ForceSynchronousImport);
-                            }
-                        }
-                        var importer = AssetImporter.GetAtPath(preparedPath) as TextureImporter;
-                        if (importer == null)
-                            throw new InvalidDataException("No TextureImporter available for " + preparedPath);
-                        if (importer.textureType != TextureImporterType.NormalMap ||
-                            importer.sRGBTexture || importer.convertToNormalmap)
-                        {
-                            importer.textureType = TextureImporterType.NormalMap;
-                            importer.convertToNormalmap = false;
-                            importer.sRGBTexture = false;
-                            importer.SaveAndReimport();
-                            configured++;
-                        }
-                    }
-                    catch (Exception error)
-                    {
-                        failed++;
-                        Debug.LogWarning("EMD2Unity: could not prepare normal texture '" +
-                            assetPath + "': " + error.Message);
-                    }
+                    if (textureImporter.textureType == TextureImporterType.NormalMap) continue;
+                    textureImporter.textureType = TextureImporterType.NormalMap;
+                    textureImporter.sRGBTexture = false;
+                    textureImporter.SaveAndReimport();
+                    updated++;
                 }
             }
-            return configured;
-        }
-
-        private static void ConvertDdsTextureToPng(Texture2D source, string destination)
-        {
-            if (source.width <= 0 || source.height <= 0 ||
-                source.width > 8192 || source.height > 8192)
-                throw new InvalidDataException("DDS dimensions unsupported for automatic normal-map conversion.");
-
-            // GPU decompresses compressed DDS on blit; ReadPixels copies to an
-            // uncompressed, readable RGBA32 texture for EncodeToPNG.
-            RenderTexture surface = RenderTexture.GetTemporary(source.width, source.height,
-                0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
-            RenderTexture previous = RenderTexture.active;
-            Texture2D rgba = null;
-            try
-            {
-                Graphics.Blit(source, surface);
-                RenderTexture.active = surface;
-                rgba = new Texture2D(source.width, source.height, TextureFormat.RGBA32, false, true);
-                rgba.ReadPixels(new Rect(0, 0, source.width, source.height), 0, 0, false);
-                rgba.Apply(false, false);
-                byte[] png = rgba.EncodeToPNG();
-                if (png == null || png.Length == 0)
-                    throw new InvalidDataException("PNG encoder failed for DDS normal map.");
-                File.WriteAllBytes(destination, png);
-            }
-            finally
-            {
-                RenderTexture.active = previous;
-                if (rgba != null) UnityEngine.Object.DestroyImmediate(rgba);
-                RenderTexture.ReleaseTemporary(surface);
-            }
+            return updated;
         }
 
         // EMAT v1 discovery only: the observed files use the "TAME" byte order and

@@ -35,15 +35,14 @@ namespace MusafirEx.EMD2Unity
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("useEmatTextureReferences"), new GUIContent("Read Companion EMAT Texture Names"));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("linkNormalMaps"), new GUIContent("Link Normal Textures (Opt-in)"));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("linkSpecularMaps"), new GUIContent("Link Specular Textures (Opt-in)"));
-                    EditorGUILayout.HelpBox("Unity DDSImporter has no Texture Type setting. The button converts nearby *_NO.dds to new *_NO_EMD2Unity.png normal maps (original DDS files remain unchanged), configures normal-map import settings and enables linking. Existing generated PNG files are preserved. Specular linking remains experimental.", MessageType.Info);
-                    if (GUILayout.Button("Prepare Nearby Normal Maps (DDS to PNG)"))
+                    EditorGUILayout.HelpBox("EMAT references _CO, _NO and _SP maps. Diffuse prefers EMD. To use _NO normals, click the button below: it configures nearby *_NO textures as Unity Normal maps and enables normal linking. Specular matching remains experimental.", MessageType.Info);
+                    if (GUILayout.Button("Prepare Nearby _NO Textures as Normal Maps"))
                     {
                         var selectedImporter = target as EmdImporter;
                         if (selectedImporter != null)
                         {
-                            int found, generated, failed;
-                            int updated = EmdImporter.PrepareNearbyNormalTextures(
-                                selectedImporter.assetPath, out found, out generated, out failed);
+                            int found;
+                            int updated = EmdImporter.PrepareNearbyNormalTextures(selectedImporter.assetPath, out found);
                             if (found == 0)
                             {
                                 EditorUtility.DisplayDialog("EMD2Unity Normal Maps",
@@ -54,10 +53,9 @@ namespace MusafirEx.EMD2Unity
                             {
                                 serializedObject.FindProperty("linkNormalMaps").boolValue = true;
                                 serializedObject.ApplyModifiedProperties();
-                                Debug.Log("EMD2Unity: found " + found + " *_NO sources, generated " +
-                                    generated + " DDS-to-PNG derivatives, configured " + updated +
-                                    " Normal-map importers, failed " + failed + " for " +
-                                    selectedImporter.assetPath + ". Reimporting EMD...");
+                                Debug.Log("EMD2Unity: prepared " + updated + " normal textures; " +
+                                    found + " matching _NO files found for " + selectedImporter.assetPath +
+                                    ". Normal linking enabled. Reimporting EMD...");
                                 selectedImporter.SaveAndReimport();
                                 GUIUtility.ExitGUI();
                             }
