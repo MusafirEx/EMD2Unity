@@ -61,6 +61,12 @@ namespace MusafirEx.EMD2Unity
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("swapYAndZ"), new GUIContent("Convert PS3 Z-Up to Unity Y-Up"));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("reverseWinding"), new GUIContent("Reverse Triangle Winding"));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("useVertexColors"), new GUIContent("Preserve Vertex Colors"));
+                    EditorGUILayout.Space();
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("recoverSupportedPolygons"),
+                        new GUIContent("Recover Supported Meshes (skip unsupported polygons)"));
+                    EditorGUILayout.HelpBox(
+                        "Optional stage-EMD recovery: keeps valid polygon records if others have unsupported vertex/index layouts. Skipped polygons remain missing and detailed reasons are written to Console. Off by default to preserve strict import behavior. Click Apply to reimport.",
+                        MessageType.Info);
                     EditorGUILayout.HelpBox("Normals are recalculated. If the model appears inside-out, toggle Reverse Triangle Winding.", MessageType.Info);
                     break;
                 case 1:

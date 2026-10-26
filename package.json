@@ -1,9 +1,9 @@
 {
   "name": "com.musafirex.emd2unity",
   "displayName": "EMD2Unity - Kamen Rider PS3 EMD Importer",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "unity": "2022.3",
-  "description": "Experimental PS3 EMD/PEMT Unity importer with single and batch AnimationClip export.",
+  "description": "Experimental EMD and PEMT Unity importers; stage polygon diagnostics and opt-in partial mesh recovery.",
   "keywords": [
     "kamen-rider",
     "emd",

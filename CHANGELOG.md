@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.7 (opt-in partial EMD mesh recovery and vertex diagnostics)
+
+- Added an opt-in **Recover Supported Meshes (skip unsupported polygons)** toggle in the EMD Model tab. Disabled by default to preserve existing successful imports.
+- When enabled, polygon parsing recovers at validated polygon-record boundaries after an unsupported vertex or index layout, preserving decoded geometry from other polygons.
+- Recoverable errors are limited to malformed binary data, unexpected end of file and numeric offset overflow; unknown runtime exceptions are not silently swallowed.
+- `Vertex buffer smaller than declared point count` diagnostics now include mesh name, polygon/group index, required byte count, declared buffer bytes, offsets and index/UV sizes.
+- Recovery warnings explicitly report skipped polygon records and successful mesh groups; a no-mesh file remains identified as empty.
+- Does **not** guess vertex compression, synthesize missing geometry, alter character mesh topology, or change the PEMT animation decoder/exporter.
+- The reference MaxScript treats vertamount as a byte count (12 bytes per position); unsupported stage layouts require examination of actual EMD bytes.
+- Unity 2022.3 live import validation pending.
+
+
 ## 0.3.6 (nonstandard EMD stage index layouts)
 
 - Fixed a newly observed failure in `AREA00.emd`: `Triangle index count 64 is not divisible by 3 in enkei`, after the v0.3.5 28-byte UV layout improvement.

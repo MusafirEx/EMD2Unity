@@ -16,7 +16,7 @@ using UnityEngine.Rendering;
 
 namespace MusafirEx.EMD2Unity
 {
-    [ScriptedImporter(6, "emd")]
+    [ScriptedImporter(7, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         [Header("Model")]
@@ -24,6 +24,7 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private bool swapYAndZ = true;
         [SerializeField] private bool reverseWinding = false;
         [SerializeField] private bool useVertexColors = true;
+        [SerializeField] private bool recoverSupportedPolygons = false;
         [Header("Rig")]
         [SerializeField] private bool importSkeleton = true;
         [Header("Materials")]
@@ -37,7 +38,7 @@ namespace MusafirEx.EMD2Unity
             try
             {
                 byte[] data = File.ReadAllBytes(ctx.assetPath);
-                var document = EmdParser.Parse(data);
+                var document = EmdParser.Parse(data, recoverSupportedPolygons);
                 CreateUnityAssets(ctx, document);
                 foreach (string warning in document.ImportWarnings)
                     ctx.LogImportWarning(warning);
@@ -440,6 +441,8 @@ namespace MusafirEx.EMD2Unity
         public readonly List<EmdGroup> Groups = new List<EmdGroup>();
         public int DeclaredPolygonCount;
         public int EmptyGroupCount;
+        public int RecoveredPolygonCount;
+        public int SkippedPolygonCount;
         public readonly List<string> ImportWarnings = new List<string>();
     }
 
@@ -526,7 +529,7 @@ namespace MusafirEx.EMD2Unity
             if (count < 0 || count > max) throw new InvalidDataException("Invalid " + label + " count: " + count);
         }
 
-        public static EmdDocument Parse(byte[] data)
+        public static EmdDocument Parse(byte[] data, bool recoverSupportedPolygons = false)
         {
             if (data.Length < 0x68) throw new InvalidDataException("EMD header is too short.");
             var r = new BeReader(data);
@@ -596,7 +599,12 @@ namespace MusafirEx.EMD2Unity
                 int start = r.Position;
                 r.Skip(4);
                 int recordSize = r.I32();
-                if (recordSize < 0x140) throw new InvalidDataException("Invalid polygon record size at 0x" + start.ToString("X"));
+                if (recordSize < 0x140 || (long)start + recordSize > r.Length)
+                    throw new InvalidDataException("Invalid polygon record size at 0x" + start.ToString("X") +
+                        ": size=" + recordSize + ", totalFileBytes=" + r.Length);
+                int groupsBeforePolygon = doc.Groups.Count;
+                try
+                {
                 r.I32(); r.F32();
                 string name = r.CString(32);
                 r.Seek(start + 0x110);
@@ -714,7 +722,14 @@ namespace MusafirEx.EMD2Unity
                     // All earlier 8..24-byte layouts retain their prior behavior.
                     int uvSize = uvStride / 4;
                     if (vertexBytes / 12 < pointCount)
-                        throw new InvalidDataException("Vertex buffer smaller than declared point count.");
+                        throw new InvalidDataException("Vertex buffer smaller than declared point count in " +
+                            name + " / polygon " + p + " / group " + g +
+                            ": declared=" + pointCount + " vertices (" + ((long)pointCount * 12L) +
+                            " bytes), positionBuffer=" + vertexBytes +
+                            " bytes, vertexOffset=0x" + vertexJump.ToString("X") +
+                            ", uvLength=" + uvLength + " bytes, indexBytes=" + indexBytes +
+                            ", polygonOffset=0x" + start.ToString("X") +
+                            ". Geometry layout not confirmed; cannot safely decode this group.");
                     if (indexBytes / sizeof(ushort) < indexCount)
                         throw new InvalidDataException("Triangle index buffer too small in " + name +
                             " (declared " + indexCount + " indices / " + (indexCount * sizeof(ushort)) +
@@ -808,8 +823,43 @@ namespace MusafirEx.EMD2Unity
                     });
                     r.Seek(nextGroupPosition);
                 }
+                if (doc.Groups.Count > groupsBeforePolygon)
+                    doc.RecoveredPolygonCount++;
+                }
+                catch (InvalidDataException ex)
+                {
+                    if (!recoverSupportedPolygons) throw;
+                    doc.SkippedPolygonCount++;
+                    doc.ImportWarnings.Add("EMD skipped unsupported polygon #" + p +
+                        " at 0x" + start.ToString("X") + ": " + ex.Message +
+                        " [Recover Supported Meshes enabled]");
+                }
+                catch (EndOfStreamException ex)
+                {
+                    if (!recoverSupportedPolygons) throw;
+                    doc.SkippedPolygonCount++;
+                    doc.ImportWarnings.Add("EMD skipped truncated polygon #" + p +
+                        " at 0x" + start.ToString("X") + ": " + ex.Message +
+                        " [Recover Supported Meshes enabled]");
+                }
+                catch (OverflowException ex)
+                {
+                    if (!recoverSupportedPolygons) throw;
+                    doc.SkippedPolygonCount++;
+                    doc.ImportWarnings.Add("EMD skipped polygon with invalid numeric offsets #" + p +
+                        " at 0x" + start.ToString("X") + ": " + ex.Message +
+                        " [Recover Supported Meshes enabled]");
+                }
+                // Polygon header's record size is the only trusted boundary to
+                // resume from after failure. Do not infer group boundaries.
                 r.Seek((long)start + recordSize);
             }
+            if (recoverSupportedPolygons && doc.SkippedPolygonCount > 0)
+                doc.ImportWarnings.Add("EMD recovery summary: " +
+                    doc.Groups.Count + " mesh group(s) decoded, " +
+                    doc.RecoveredPolygonCount + " polygon record(s) decoded, " +
+                    doc.SkippedPolygonCount + " polygon record(s) skipped. " +
+                    "Unsupported data was not converted to geometry.");
             return doc;
         }
     }
