@@ -16,7 +16,7 @@ using UnityEngine.Rendering;
 
 namespace MusafirEx.EMD2Unity
 {
-    [ScriptedImporter(8, "emd")]
+    [ScriptedImporter(9, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         [Header("Model")]
@@ -613,15 +613,33 @@ namespace MusafirEx.EMD2Unity
                 int headerType = r.U16();
                 r.Skip(12);
                 int groupCount = 1;
+                List<int> stage200Headers = null;
                 if (headerType == 0x204)
                 {
                     groupCount = r.U16(); r.U16(); r.Skip(12 + 16);
+                }
+                else if (headerType == 0x200 && doc.Bones.Count == 0)
+                {
+                    // The 0x200 polygon has a routing/preamble record before its
+                    // real submeshes. Probe complete in-polygon descriptors
+                    // instead of treating the preamble as an empty mesh.
+                    stage200Headers = EmdStageBinaryDiagnostics.ProbeConventionalMeshHeaders(
+                        null, data, start, (long)start + recordSize);
+                    if (stage200Headers.Count > 0)
+                    {
+                        groupCount = stage200Headers.Count;
+                        doc.ImportWarnings.Add("EMD stage " + name +
+                            " / polygon " + p + ": found " + groupCount +
+                            " validated submeshes inside type-0x200 container.");
+                    }
                 }
                 ValidateCount(groupCount, "mesh groups", 512);
 
                 for (int g = 0; g < groupCount; ++g)
                 {
-                    if (g > 0) r.Skip(0x50);
+                    if (stage200Headers != null && stage200Headers.Count > 0)
+                        r.Seek(stage200Headers[g]);
+                    else if (g > 0) r.Skip(0x50);
                     int basePos = r.SkipZeroWords();
                     int indexJump = checked(basePos + r.I32());
                     int indexBytes = r.U16(); r.U16();
@@ -735,7 +753,9 @@ namespace MusafirEx.EMD2Unity
                         long physicalPositionEnd = (long)vertexJump + requiredPositionBytes;
                         long physicalIndexEnd = (long)indexJump + indexBytes;
                         bool contiguousStaticStage =
-                            headerType == 0 && groupCount == 1 && g == 0 &&
+                            ((headerType == 0 && groupCount == 1 && g == 0) ||
+                             (headerType == 0x200 && stage200Headers != null &&
+                              stage200Headers.Count > 0 && doc.Bones.Count == 0)) &&
                             vertexBytes == 0x4000 &&
                             indexJump >= start &&
                             indexCount > 0 &&
@@ -848,8 +868,17 @@ namespace MusafirEx.EMD2Unity
                     }
                     // Some files have no subsequent UV chunk after the final mesh.
                     // Advance when possible, otherwise leave the cursor at EOF.
-                    try { uvOffset = r.SkipZeroWords(); }
-                    catch (InvalidDataException) { uvOffset = r.Position; }
+                    if (stage200Headers != null && stage200Headers.Count > 0)
+                    {
+                        // 0x200 static-container UV blocks follow one another.
+                        // Do not skip zero words that might be real UV values.
+                        uvOffset = r.Position;
+                    }
+                    else
+                    {
+                        try { uvOffset = r.SkipZeroWords(); }
+                        catch (InvalidDataException) { uvOffset = r.Position; }
+                    }
 
                     EmdWeight[] weights = new EmdWeight[doc.Bones.Count > 0 ? pointCount : 0];
                     int nextGroupPosition = r.Position;
