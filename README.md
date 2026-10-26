@@ -2,7 +2,7 @@
 
 Native **Unity 2022.3+** Editor package for experimenting with PS3 Kamen Rider *Battride War / Battride War Genesis (Sousei)* `.EMD` models. The parser was rewritten in C# based on the format research of [Random Talking Bush](https://github.com/RandomTBush/RTB-3DSMax-Scripts/blob/main/Scripts/KamenRiderPS3_EMD.ms).
 
-> **Experimental:** The Editor assembly was previously compiled in Unity 2022.3.62f3. Version 0.3.0 adds manual export of experimental Unity AnimationClips decoded from PEMT position and quaternion keyframes. The EMD model importer remains unchanged from v0.1.5. PEMT transform/keyframe decoding is not yet implemented. Unity rendering, rig and shader equivalence remain pending. It may require fixes for particular models.
+> **Experimental:** The Editor assembly was previously compiled in Unity 2022.3.62f3. Version 0.3.1 adds manual export of experimental Unity AnimationClips decoded from PEMT position and quaternion keyframes. The EMD model importer remains unchanged from v0.1.5. PEMT transform/keyframe decoding is not yet implemented. Unity rendering, rig and shader equivalence remain pending. It may require fixes for particular models.
 
 ## Install directly from this GitHub repository
 
@@ -19,7 +19,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.3.0.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.3.1.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
@@ -33,7 +33,7 @@ Then in Unity select **Assets → Import Package → Custom Package...** and sel
 5. In the **Materials** inspector tab click **Prepare Nearby _NO Textures as Normal Maps** to convert supported `_NO` texture import settings and enable normal linking. This modifies only nearby `_NO` texture import settings, then reimports the EMD; it does not convert the underlying PS3 normal-map encoding. The tool also accepts already configured Normal maps. Specular linking is experimental and shader-dependent.
 6. Change **Reverse Triangle Winding** if faces are inverted, and test the rig by moving bones.
 
-### PEMT motion inspector and experimental AnimationClip export (v0.3.0)
+### PEMT motion inspector and experimental AnimationClip export (v0.3.1)
 
 1. Drop an extracted `*.pemt` in any `Assets/` directory, for example `Assets/KRBWS/CSD/CSD00/motion/0000.pemt`.
 2. Unity imports the file as a `PemtMotionLibrary` ScriptableObject. Select it and use the read-only Inspector.

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 (Unity 2022.3 compatibility)
+
+- Replaced Single.IsFinite with IsNaN/IsInfinity checks to avoid .NET API profile incompatibilities in Unity 2022.3.
+- Preserved v0.3.0 PEMT clip decoding/export functionality and untouched v0.1.5 EMD importer.
+- Offline validation: all 18,629 transform tracks have strictly increasing timestamp samples within their motion duration; Unity compile/visual evaluation is pending.
+
+
 ## 0.3.0 (experimental PEMT animation export)
 
 - Identified 0x02040021 position tracks and 0x02040028 quaternion tracks: big-endian IEEE-754 float32 times and packed half-float XYZ0/XYZW values.

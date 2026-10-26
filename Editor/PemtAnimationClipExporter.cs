@@ -139,7 +139,7 @@ namespace MusafirEx.EMD2Unity
                     for(int k=0;k<count;k++)
                     {
                         time[k]=F32(b,timesAt+k*4);
-                        if(!float.IsFinite(time[k])||time[k]<0||
+                        if((float.IsNaN(time[k]) || float.IsInfinity(time[k]))||time[k]<0||
                             (k>0&&time[k]<time[k-1]))
                             throw new InvalidDataException("Invalid key time for bone j"+jointId);
                     }
