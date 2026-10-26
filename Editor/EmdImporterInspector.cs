@@ -17,6 +17,43 @@ namespace MusafirEx.EMD2Unity
             serializedObject.Update();
             tab = GUILayout.Toolbar(tab, Tabs);
             EditorGUILayout.Space(7f);
+            // Stage EMDs can import as an empty root without any renderable
+            // polygon groups. Surface this clearly rather than presenting a
+            // misleading apparently successful model import.
+            var selectedEmd = target as EmdImporter;
+            if (selectedEmd != null && !string.IsNullOrEmpty(selectedEmd.assetPath))
+            {
+                GameObject imported = AssetDatabase.LoadAssetAtPath<GameObject>(selectedEmd.assetPath);
+                if (imported != null)
+                {
+                    bool hasGeometry = false;
+                    foreach (MeshFilter filter in imported.GetComponentsInChildren<MeshFilter>(true))
+                    {
+                        if (filter.sharedMesh != null && filter.sharedMesh.vertexCount > 0)
+                        {
+                            hasGeometry = true;
+                            break;
+                        }
+                    }
+                    if (!hasGeometry)
+                    {
+                        foreach (SkinnedMeshRenderer render in imported.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                        {
+                            if (render.sharedMesh != null && render.sharedMesh.vertexCount > 0)
+                            {
+                                hasGeometry = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!hasGeometry)
+                        EditorGUILayout.HelpBox(
+                            "This EMD imported without renderable meshes (empty GameObject). " +
+                            "See Console for polygon/vertex counts. If this is an environment AREA model, " +
+                            "it may be a reference/empty file or a format variant; an imported root alone " +
+                            "does not mean its geometry was decoded.", MessageType.Warning);
+                }
+            }
             switch (tab)
             {
                 case 0:

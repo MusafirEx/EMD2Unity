@@ -16,7 +16,7 @@ using UnityEngine.Rendering;
 
 namespace MusafirEx.EMD2Unity
 {
-    [ScriptedImporter(4, "emd")]
+    [ScriptedImporter(5, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         [Header("Model")]
@@ -293,7 +293,16 @@ namespace MusafirEx.EMD2Unity
             }
             ctx.AddObjectToAsset("root", root);
             ctx.SetMainObject(root);
-            if (doc.Groups.Count == 0) ctx.LogImportWarning("No polygon groups found.");
+            if (doc.Groups.Count == 0)
+            {
+                ctx.LogImportWarning("EMD imported with no renderable polygon groups: " +
+                    Path.GetFileName(ctx.assetPath) + ". Header declares " +
+                    doc.DeclaredPolygonCount + " polygon records; " +
+                    doc.EmptyGroupCount + " groups have zero vertices. " +
+                    "Unity will display an empty root object. This file may be " +
+                    "an empty/reference EMD or a variant of the format requiring " +
+                    "further binary analysis.");
+            }
         }
 
         // Called from the Inspector, never from OnImportAsset: changing an importer
@@ -427,6 +436,8 @@ namespace MusafirEx.EMD2Unity
         public readonly List<EmdBone> Bones = new List<EmdBone>();
         public readonly List<EmdMaterial> Materials = new List<EmdMaterial>();
         public readonly List<EmdGroup> Groups = new List<EmdGroup>();
+        public int DeclaredPolygonCount;
+        public int EmptyGroupCount;
     }
 
     // Big endian byte reader with strict bounds checks (PS3 EMD format).
@@ -524,6 +535,7 @@ namespace MusafirEx.EMD2Unity
             int polygonOffset = r.I32(); r.I32();
             int boneOffset = r.I32(); int materialOffset = r.I32();
             int uvOffset = r.I32(); r.I32(); r.I32();
+            doc.DeclaredPolygonCount = polygonCount;
             ValidateCount(polygonCount, "polygon");
             ValidateCount(boneCount, "bone");
             ValidateCount(matCount, "material");
@@ -626,10 +638,19 @@ namespace MusafirEx.EMD2Unity
                     ValidateCount(indexCount, "triangle indices", 65535);
                     if (indexCount % 3 != 0)
                         throw new InvalidDataException("Triangle index count " + indexCount + " is not divisible by 3 in " + name);
-                    if (pointCount == 0) continue;
+                    if (pointCount == 0)
+                    {
+                        doc.EmptyGroupCount++;
+                        continue;
+                    }
                     int uvStride = uvLength / pointCount;
-                    if (uvStride * pointCount != uvLength || uvStride % 4 != 0 || uvStride < 8 || uvStride > 24)
+                    if (uvStride * pointCount != uvLength || uvStride % 4 != 0 || uvStride < 8 || uvStride > 28)
                         throw new InvalidDataException("Unsupported UV stride " + uvStride + " (" + name + ")");
+                    // Stage geometry such as AREA00/jimen_naka can use 28 bytes:
+                    // 3 leading UV pairs (12 bytes), ARGB (4), 3 trailing UV pairs
+                    // (12). The existing uvSize>=5 decoding branch already
+                    // handles these records and selects the first trailing UV set.
+                    // All earlier 8..24-byte layouts retain their prior behavior.
                     int uvSize = uvStride / 4;
                     if (vertexBytes / 12 < pointCount)
                         throw new InvalidDataException("Vertex buffer smaller than declared point count.");

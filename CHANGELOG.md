@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.5 (stage EMD UV layout and empty-model diagnostics)
+
+- Fixed stage `AREA00.emd` import failure `Unsupported UV stride 28 (jimen_naka)` by supporting the 28-byte UV/color layout already covered by the parser's multi-UV branch.
+- Retains original support and field interpretation for EMD UV record strides of 8–24 bytes.
+- Improves `No polygon groups found` diagnostics with declared polygon count and zero-vertex group count; a model with no decoded geometry remains an empty root and is not presented as a successful rendered mesh.
+- Adds a warning in the EMD Model/Rig/Materials/Animation inspector if the resulting model contains no valid renderable meshes.
+- Bumps EMD ScriptedImporter revision 4 → 5 to reimport existing .emd assets after package update.
+- The currently selected stage asset `AREA01.emd` was confirmed to import with no geometry; this update diagnoses but cannot invent missing meshes. Live 28-byte stage geometry rendering validation is still pending.
+- Does not modify PEMT import, single animation export, or batch animation export.
+
+
 ## 0.3.4 (export all animations from selected PEMT)
 
 - Added **Export ALL Animations in This PEMT** to the shared PEMT Motion Panel, available in both Inspector and PEMT Motion Browser.
