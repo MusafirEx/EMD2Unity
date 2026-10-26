@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.4 (export all animations from selected PEMT)
+
+- Added **Export ALL Animations in This PEMT** to the shared PEMT Motion Panel, available in both Inspector and PEMT Motion Browser.
+- Reused the existing single-animation keyframe decoder to export every Motion ID containing position or rotation tracks as a separate .anim asset.
+- Output placed under `<PEMT folder>/<PEMT basename>_Animations/`, e.g. `0000_Animations/0000_Motion_00C.anim`.
+- Skips placeholder motions without transform data, preserves existing .anim files, continues on individual export failures, and supports cancellation through Unity's progress window.
+- Consolidates results into a single summary and only saves assets after batch completes or cancels; no per-motion dialogs.
+- Single-motion export and the underlying PEMT position/rotation decoding remain unchanged. EMD model importer stays at the v0.1.5 behavior.
+- Live compilation and bulk-export validation in Unity 2022.3 remain pending.
+
+
 ## 0.3.3 (fix read-only PEMT Inspector)
 
 - Root cause: the PEMT custom Inspector targeted the *generated* PemtMotionLibrary ScriptableObject. When selecting a source PEMT file, Unity's ScriptedImporter presents that generated asset in read-only mode.

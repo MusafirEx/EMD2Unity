@@ -151,7 +151,15 @@ namespace MusafirEx.EMD2Unity
                     try{PemtAnimationClipExporter.Export(library,selected,targetEmd,rotateDeltaFirst);}
                     catch(Exception ex){Debug.LogException(ex);EditorUtility.DisplayDialog("PEMT Export Failed",ex.Message,"OK");}
                 }
+                if(GUILayout.Button("Export ALL Animations in This PEMT"))
+                {
+                    try{PemtAnimationBatchExporter.ExportAll(library,targetEmd,rotateDeltaFirst);}
+                    catch(Exception ex){Debug.LogException(ex);EditorUtility.DisplayDialog("PEMT Batch Export Failed",ex.Message,"OK");}
+                }
             }
+            EditorGUILayout.HelpBox(
+                "Export All creates a <PEMT name>_Animations folder beside the source PEMT, skips existing .anim files, and shows one summary. You can cancel while retaining exported files.",
+                MessageType.Info);
             int maxPage = Math.Max(0, (selected.tracks.Count - 1) / TrackPageSize);
             if (trackPage > maxPage) trackPage = maxPage;
             EditorGUILayout.BeginHorizontal();

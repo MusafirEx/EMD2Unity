@@ -2,7 +2,7 @@
 
 Native **Unity 2022.3+** Editor package for experimenting with PS3 Kamen Rider *Battride War / Battride War Genesis (Sousei)* `.EMD` models. The parser was rewritten in C# based on the format research of [Random Talking Bush](https://github.com/RandomTBush/RTB-3DSMax-Scripts/blob/main/Scripts/KamenRiderPS3_EMD.ms).
 
-> **Experimental:** The Editor assembly was previously compiled in Unity 2022.3.62f3. Version 0.3.3 makes PEMT Inspector controls interactive when selecting a .pemt source file. The previous UI was attached to the generated ScriptableObject, which Unity displays read-only. A separate PEMT Motion Browser window is also available. The EMD model importer remains unchanged from v0.1.5. Unity rendering, rig and shader equivalence remain pending. It may require fixes for particular models.
+> **Experimental:** The Editor assembly was previously compiled in Unity 2022.3.62f3. Version 0.3.4 adds batch export of all PEMT motions with transform keys to separate .anim files. The decoder is the same as the working single-motion export. Version 0.3.3 made PEMT Inspector controls interactive when selecting a .pemt source file. The previous UI was attached to the generated ScriptableObject, which Unity displays read-only. A separate PEMT Motion Browser window is also available. The EMD model importer remains unchanged from v0.1.5. Unity rendering, rig and shader equivalence remain pending. It may require fixes for particular models.
 
 ## Install directly from this GitHub repository
 
@@ -19,7 +19,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.3.3.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.3.4.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
@@ -33,14 +33,16 @@ Then in Unity select **Assets → Import Package → Custom Package...** and sel
 5. In the **Materials** inspector tab click **Prepare Nearby _NO Textures as Normal Maps** to convert supported `_NO` texture import settings and enable normal linking. This modifies only nearby `_NO` texture import settings, then reimports the EMD; it does not convert the underlying PS3 normal-map encoding. The tool also accepts already configured Normal maps. Specular linking is experimental and shader-dependent.
 6. Change **Reverse Triangle Winding** if faces are inverted, and test the rig by moving bones.
 
-### PEMT motion inspector and experimental AnimationClip export (v0.3.3)
+### PEMT motion inspector and AnimationClip exports (v0.3.4)
 
 1. Drop an extracted `*.pemt` in any `Assets/` directory, for example `Assets/KRBWS/CSD/CSD00/motion/0000.pemt`.
 2. Unity imports the file as a `PemtMotionLibrary` ScriptableObject. Click the **.pemt file** (not its ScriptableObject subasset) in the Project window. The **PemtImporter** custom Inspector now exposes active controls. Alternatively, use **Tools → EMD2Unity → PEMT Motion Browser** for an independent interactive window.
 3. Use the interactive Inspector or Browser window to filter Motion IDs in hexadecimal (for example `0x140`) or decimal (for example `320`), then select a motion using the **Select Motion ID** dropdown.
 4. Assign a corresponding EMD model via the **Nearby EMD Models** dropdown, a Project asset, or a linked EMD prefab instance in the Hierarchy (e.g. `CSR00.emd` for CSD) to **EMD Model**.
-5. Click **Export Selected Motion to .anim** and choose the output path. Test the clip in Unity Animation Window or an Animator Controller on a duplicate matching EMD prefab.
-6. If a pose looks twisted, try the alternate **Delta Rotation First** option. Position data is added to the EMD rest-pose position; quaternion motion is multiplied by rest-pose rotation. Rest-pose composition and engine interpolation still require visual validation.
+5. For one motion, click **Export Selected Motion to .anim** and choose the output path. For the entire PEMT, click **Export ALL Animations in This PEMT**. It creates `<PEMT name>_Animations/` beside the selected PEMT with files such as `0000_Motion_00C.anim`, `0000_Motion_100.anim`, etc.
+6. Batch export includes any Motion ID with actual position/rotation keyframes (including Motion 0 if it has keys), skips pure timeline/placeholder entries, skips existing .anim assets without overwriting them, continues past individually failed motions, and supports cancellation. A final report gives the exported/existing/skipped/failed counts. The original PEMT and EMD are not modified.
+7. Test exported clips in Unity Animation Window or an Animator Controller on a duplicate matching EMD prefab.
+8. If a pose looks twisted, try the alternate **Delta Rotation First** option. Position data is added to the EMD rest-pose position; quaternion motion is multiplied by rest-pose rotation. Rest-pose composition and engine interpolation still require visual validation.
 
 **Newly decoded:** marker `0x02040021` stores position (XYZ + zero padding), `0x02040028` stores quaternion (XYZW); both use four big-endian IEEE-754 half-floats per key. Track-info upper 16 bits is bone suffix ID (`_jN`), lower 16 bits is key count. The track's two offsets point to float32 key times and half-float key values, respectively. Marker `0x40` is a master timeline.
 **Limitations:** no automatic clip stitching, root-motion extraction, events, scale curves, original interpolation reconstruction, or humanoid mapping. Additional bones absent from the chosen EMD are skipped and reported.
@@ -58,7 +60,7 @@ The PEMT parser uses big-endian header and 32-byte track descriptors. In the gam
 | Inspector: Model, Rig, Materials, Animation | Present (animation tab is informational) |
 | Generic/Humanoid avatar setup | Not automatic |
 | PEMT motion-container metadata (ID, duration, track table) | Import and inspect |
-| PEMT AnimationClip export | Experimental manual .anim output from position and quaternion keyframes |
+| PEMT AnimationClip export | Experimental single-motion and batch .anim export from position and quaternion keyframes |
 | Automatic animation assignment, EMD export, DLC packaging | Not supported |
 | Offline sample inspection | 19 EMD and 117 EMAT files examined; Unity visual validation pending |
 

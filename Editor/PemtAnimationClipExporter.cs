@@ -106,8 +106,10 @@ namespace MusafirEx.EMD2Unity
                 "An unpacked scene-only GameObject has no EMD import settings.");
         }
 
-        internal static void Export(PemtMotionLibrary lib,PemtMotionMetadata motion,
-            GameObject model,bool rotateFirst)
+        // Batch mode reuses the exact single-motion decoder, but supplies an
+        // output path and suppresses per-clip dialogs and selection changes.
+        internal static bool Export(PemtMotionLibrary lib,PemtMotionMetadata motion,
+            GameObject model,bool rotateFirst,string batchAssetPath=null,bool interactive=true)
         {
             if(lib==null||motion==null||model==null)throw new ArgumentException("Select a PEMT motion and an EMD model.");
             // The Inspector may hold either an EMD Project asset or a scene prefab
@@ -129,10 +131,15 @@ namespace MusafirEx.EMD2Unity
             MapBones(armature,"Armature",paths,bones);
             if(paths.Count==0)throw new InvalidDataException("No EMD bones with _j<number> suffix.");
             string name=Path.GetFileNameWithoutExtension(sourcePath)+"_Motion_"+motion.motionId.ToString("X3");
-            string save=EditorUtility.SaveFilePanelInProject("PEMT AnimationClip Export",name,"anim",
-                "Export an experimental keyframed clip; test on a duplicate model.",
-                Path.GetDirectoryName(sourcePath)?.Replace('\\','/'));
-            if(string.IsNullOrEmpty(save))return;
+            string save = batchAssetPath;
+            if (string.IsNullOrEmpty(save) && interactive)
+                save = EditorUtility.SaveFilePanelInProject("PEMT AnimationClip Export",name,"anim",
+                    "Export an experimental keyframed clip; test on a duplicate model.",
+                    Path.GetDirectoryName(sourcePath)?.Replace('\\','/'));
+            if (string.IsNullOrEmpty(save)) return false;
+            if (!save.StartsWith("Assets/",StringComparison.Ordinal) ||
+                !save.EndsWith(".anim",StringComparison.OrdinalIgnoreCase))
+                throw new IOException("AnimationClip destination must be inside Unity's Assets folder.");
             if(AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(save)!=null)
                 throw new IOException("AnimationClip file already exists: "+save);
             byte[] b=File.ReadAllBytes(sourcePath);
@@ -207,13 +214,17 @@ namespace MusafirEx.EMD2Unity
                 if(bound<1)throw new InvalidDataException("No motion tracks matched the selected EMD bones.");
                 clip.EnsureQuaternionContinuity();
                 AssetDatabase.CreateAsset(clip,save);
-                AssetDatabase.SaveAssets();
-                Selection.activeObject=clip;
-                EditorGUIUtility.PingObject(clip);
-                Debug.Log("PEMT: saved "+save+" with "+bound+" bound tracks; skipped "+missing+" missing bones.");
-                EditorUtility.DisplayDialog("PEMT Export Complete",
-                    "Created "+name+" with "+bound+" bone tracks. "+missing+
-                    " tracks skipped because their bones are absent.\nPreview on a duplicate EMD model to verify pose and orientation.","OK");
+                if (interactive)
+                {
+                    AssetDatabase.SaveAssets();
+                    Selection.activeObject=clip;
+                    EditorGUIUtility.PingObject(clip);
+                    Debug.Log("PEMT: saved "+save+" with "+bound+" bound tracks; skipped "+missing+" missing bones.");
+                    EditorUtility.DisplayDialog("PEMT Export Complete",
+                        "Created "+name+" with "+bound+" bone tracks. "+missing+
+                        " tracks skipped because their bones are absent.\nPreview on a duplicate EMD model to verify pose and orientation.","OK");
+                }
+                return true;
             }
             catch
             {
