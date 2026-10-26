@@ -19,7 +19,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.4.4.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.4.5.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
@@ -88,6 +88,12 @@ Tested structurally against 12 SEQ samples from DLC 1.02. Live Unity Editor comp
 ### PEMT header error diagnostics (v0.4.4)
 
 Version 0.4.4 identifies the exact failed validation field for previously unsupported PEMT sources (e.g. ACL). The error includes pointer count, offset, declared size and actual size. No decoding rules are relaxed; character animations already working are unchanged.
+
+### Diagnose ACL and other unsupported PEMT files (v0.4.5)
+
+Select a failing `.pemt` file in Unity's Project window. Choose **Tools → EMD2Unity → Diagnose Selected PEMT Binary**. The read-only diagnostic copies a report to your clipboard and Unity Console: big-endian header words, actual and declared bytes, table boundaries, pointer-count statistics, out-of-bounds pointers, first/last motion header and raw duration. The file itself is never changed. Paste the report into the issue or analysis conversation.
+
+**Do not assume compressed or truncated data solely from a declared-size mismatch.** Unsupported files remain rejected until their actual binary structure is verified. Existing PEMT Animation Preview and Export All behavior remains unchanged.
 
 ## Status
 

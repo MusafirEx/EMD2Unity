@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.5 — read-only diagnostic for unsupported ACL PEMT
+
+- Adds **Tools > EMD2Unity > Diagnose Selected PEMT Binary**. Select a PEMT source file (including one with an import error) to copy an evidence report to the clipboard and Unity Console.
+- Includes raw big-endian header, declared vs physical size, pointer-table bounds, first/last pointers, out-of-bounds counts, alignment, monotonicity and first/last motion-block headers.
+- Does not change the PEMT decoder, supported file formats, Animation Preview, Export All, EMD, SEQ or CCM logic.
+- Built for investigating six ACL PEMT assets rejected after the v0.4.4 header-size diagnostics. Compression and truncation remain unverified.
+
+
 ## 0.4.4 (PEMT header error diagnostics)
 
 - Reports separately which supported PEMT header check fails: pointer count, pointer-table offset, declared file size, or table/file boundary, including the actual values.
