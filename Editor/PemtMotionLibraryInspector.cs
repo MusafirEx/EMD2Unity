@@ -2,6 +2,7 @@
 #if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
+using System.IO;
 using UnityEditor;
 using UnityEngine;
 
@@ -14,9 +15,31 @@ namespace MusafirEx.EMD2Unity
         private int selectedMotionId = -1;
         private int trackPage = 0;
         private const int TrackPageSize = 24;
-        private Vector2 listScroll;
         private GameObject targetEmd;
         private bool rotateDeltaFirst;
+
+        // PEMT files typically live in <character>/motion/, with EMD assets in
+        // <character>/model/. This fallback works even when drag-and-drop is awkward.
+        private static List<GameObject> FindNearbyEmdModels(PemtMotionLibrary library)
+        {
+            var result = new List<GameObject>();
+            string path = AssetDatabase.GetAssetPath(library);
+            if (string.IsNullOrEmpty(path)) return result;
+            string motionDirectory = Path.GetDirectoryName(path);
+            if (string.IsNullOrEmpty(motionDirectory)) return result;
+            string characterDirectory = Path.GetDirectoryName(motionDirectory);
+            if (string.IsNullOrEmpty(characterDirectory)) return result;
+            string modelDirectory = Path.Combine(characterDirectory, "model").Replace('\\', '/');
+            if (!Directory.Exists(modelDirectory)) return result;
+            foreach (string file in Directory.GetFiles(modelDirectory))
+            {
+                if (!file.EndsWith(".emd", StringComparison.OrdinalIgnoreCase)) continue;
+                var imported = AssetDatabase.LoadAssetAtPath<GameObject>(file.Replace('\\', '/'));
+                if (imported != null) result.Add(imported);
+            }
+            result.Sort((a, b) => string.Compare(a.name, b.name, StringComparison.OrdinalIgnoreCase));
+            return result;
+        }
 
         public override void OnInspectorGUI()
         {
@@ -37,8 +60,8 @@ namespace MusafirEx.EMD2Unity
             EditorGUILayout.LabelField("FPS", "60 Hz timing inferred; not confirmed playback FPS");
             EditorGUILayout.Space();
 
-            motionFilter = EditorGUILayout.TextField("Find Motion ID", motionFilter);
-            EditorGUILayout.LabelField("Click a motion to view its track descriptors", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("1. Select a PEMT Motion", EditorStyles.boldLabel);
+            motionFilter = EditorGUILayout.TextField("Filter Motion ID", motionFilter);
             var matches = new List<PemtMotionMetadata>();
             foreach (var motion in library.motions)
             {
@@ -47,24 +70,63 @@ namespace MusafirEx.EMD2Unity
                     motion.motionId.ToString().IndexOf(motionFilter, StringComparison.OrdinalIgnoreCase) >= 0)
                     matches.Add(motion);
             }
-            listScroll = EditorGUILayout.BeginScrollView(listScroll, GUILayout.MaxHeight(240));
-            foreach (var motion in matches)
+            PemtMotionMetadata selected = null;
+            if (matches.Count > 0)
             {
-                string label = motion.motionIdHex + "  |  " +
-                    motion.apparentDurationSeconds.ToString("F3") + "s  |  " +
-                    motion.tracks.Count + " tracks";
-                if (GUILayout.Toggle(selectedMotionId == motion.motionId, label, "Button"))
+                string[] motionOptions = new string[matches.Count];
+                for (int i = 0; i < matches.Count; i++)
                 {
-                    if (selectedMotionId != motion.motionId)
-                    {
-                        selectedMotionId = motion.motionId;
-                        trackPage = 0;
-                    }
+                    var m = matches[i];
+                    motionOptions[i] = m.motionIdHex + "  |  " +
+                        m.apparentDurationSeconds.ToString("F3") + "s  |  " +
+                        m.tracks.Count + " tracks";
+                }
+                int current = matches.FindIndex(m => m.motionId == selectedMotionId);
+                if (current < 0)
+                {
+                    current = matches.FindIndex(m => m.motionId != 0 && m.tracks.Count > 0);
+                    if (current < 0) current = 0;
+                }
+                int next = EditorGUILayout.Popup("Select Motion ID", current, motionOptions);
+                if (next != current) trackPage = 0;
+                if (next >= 0 && next < matches.Count)
+                {
+                    selected = matches[next];
+                    selectedMotionId = selected.motionId;
                 }
             }
-            EditorGUILayout.EndScrollView();
+            else
+            {
+                EditorGUILayout.HelpBox("No Motion ID matches this filter. Clear the filter to select a motion.", MessageType.Warning);
+            }
 
-            PemtMotionMetadata selected = library.motions.Find(m => m.motionId == selectedMotionId);
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("2. Select an EMD Model", EditorStyles.boldLabel);
+            targetEmd = (GameObject)EditorGUILayout.ObjectField(
+                "EMD Model (Project/Hierarchy)", targetEmd, typeof(GameObject), true);
+            var nearby = FindNearbyEmdModels(library);
+            if (nearby.Count > 0)
+            {
+                string[] modelOptions = new string[nearby.Count + 1];
+                modelOptions[0] = "(Choose model from sibling model folder)";
+                int modelIndex = 0;
+                for (int i = 0; i < nearby.Count; i++)
+                {
+                    modelOptions[i + 1] = nearby[i].name + " (" +
+                        Path.GetFileName(AssetDatabase.GetAssetPath(nearby[i])) + ")";
+                    if (targetEmd == nearby[i]) modelIndex = i + 1;
+                }
+                int picked = EditorGUILayout.Popup("Nearby EMD Models", modelIndex, modelOptions);
+                if (picked != modelIndex && picked > 0)
+                    targetEmd = nearby[picked - 1];
+            }
+            else
+            {
+                EditorGUILayout.HelpBox("No imported EMD model found in the sibling model/ directory. Drag an EMD asset from Project or an EMD prefab instance from Hierarchy.", MessageType.Info);
+            }
+            if (targetEmd == null)
+                EditorGUILayout.HelpBox("Select a model above. The AnimationClip export button will become enabled.", MessageType.Info);
+
             if (selected == null) return;
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Motion " + selected.motionIdHex, EditorStyles.boldLabel);
@@ -74,9 +136,8 @@ namespace MusafirEx.EMD2Unity
             EditorGUILayout.LabelField("Nominal frames at 60 Hz", selected.nominalFramesAt60Hz.ToString());
             EditorGUILayout.LabelField("Track count", selected.tracks.Count.ToString());
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Experimental AnimationClip Export",EditorStyles.boldLabel);
-            targetEmd=(GameObject)EditorGUILayout.ObjectField("EMD Model",targetEmd,typeof(GameObject),false);
-            rotateDeltaFirst=EditorGUILayout.Toggle("Delta Rotation First",rotateDeltaFirst);
+            EditorGUILayout.LabelField("3. Export Selected AnimationClip", EditorStyles.boldLabel);
+            rotateDeltaFirst = EditorGUILayout.Toggle("Delta Rotation First", rotateDeltaFirst);
             EditorGUILayout.HelpBox("Assign the imported EMD model matching this PEMT character. The clip is generated from real float16 keyframes. When joints look twisted, compare both Delta Rotation First modes. Test on a duplicate model.",MessageType.Warning);
             using(new EditorGUI.DisabledScope(targetEmd==null))
             {

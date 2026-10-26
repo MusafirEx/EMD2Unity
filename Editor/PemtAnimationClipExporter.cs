@@ -81,15 +81,42 @@ namespace MusafirEx.EMD2Unity
             Curve(clip,path,"m_LocalRotation.z",time,z);
             Curve(clip,path,"m_LocalRotation.w",time,w);
         }
+        private static GameObject ResolveSourceEmdModel(GameObject selection)
+        {
+            GameObject current = selection;
+            for (int i = 0; i < 64 && current != null; i++)
+            {
+                string path = AssetDatabase.GetAssetPath(current);
+                if (!string.IsNullOrEmpty(path) &&
+                    path.EndsWith(".emd", StringComparison.OrdinalIgnoreCase))
+                {
+                    GameObject source = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                    if (source != null) return source;
+                }
+                // Resolve prefab instances placed in Hierarchy to their imported asset.
+                GameObject original = PrefabUtility.GetCorrespondingObjectFromOriginalSource(current);
+                if (original != null && original != current) { current = original; continue; }
+                GameObject prefab = PrefabUtility.GetCorrespondingObjectFromSource(current);
+                if (prefab != null && prefab != current) { current = prefab; continue; }
+                current = current.transform.parent == null ? null : current.transform.parent.gameObject;
+            }
+            throw new InvalidDataException(
+                "Selected GameObject does not resolve to an imported .emd asset. " +
+                "Use the Nearby EMD Models dropdown or drag the EMD asset from Project. " +
+                "An unpacked scene-only GameObject has no EMD import settings.");
+        }
+
         internal static void Export(PemtMotionLibrary lib,PemtMotionMetadata motion,
             GameObject model,bool rotateFirst)
         {
             if(lib==null||motion==null||model==null)throw new ArgumentException("Select a PEMT motion and an EMD model.");
+            // The Inspector may hold either an EMD Project asset or a scene prefab
+            // instance. Resolve a scene instance back to its imported EMD source.
+            model = ResolveSourceEmdModel(model);
             string modelPath=AssetDatabase.GetAssetPath(model);
             string sourcePath=AssetDatabase.GetAssetPath(lib);
-            if(string.IsNullOrEmpty(modelPath)||!modelPath.EndsWith(".emd",StringComparison.OrdinalIgnoreCase)||
-                string.IsNullOrEmpty(sourcePath)||!sourcePath.EndsWith(".pemt",StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException("The model must be an imported .emd and source must be .pemt.");
+            if(string.IsNullOrEmpty(sourcePath)||!sourcePath.EndsWith(".pemt",StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("The source must be an imported .pemt container.");
             var emdImporter=AssetImporter.GetAtPath(modelPath) as EmdImporter;
             if(emdImporter==null)throw new InvalidDataException("Selected model is not imported by EMD2Unity.");
             SerializedObject settings=new SerializedObject(emdImporter);

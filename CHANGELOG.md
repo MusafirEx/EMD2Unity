@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.2 (PEMT Inspector model and motion selection)
+
+- Fixed EMD Model ObjectField rejecting prefab instances from the Unity Hierarchy (allowSceneObjects=true).
+- Resolve an EMD prefab instance back to the imported .emd source to access its original armature/rest pose/importer settings; unpacked scene-only objects are rejected with a clear error.
+- Added a Nearby EMD Models dropdown scanning the sibling character/model/ directory, avoiding the need to drag game assets into an ObjectField.
+- Replaced the scrolling GUILayout.Toggle list with a Select Motion ID dropdown, automatically selecting the first non-placeholder motion and showing a message when filters match nothing.
+- EMD model selector is visible before a motion is selected.
+- EMD model importer remains unchanged from v0.1.5; experimental PEMT transform decoder remains unchanged from v0.3.1.
+- Unity visual and compile test pending; RTS MCP currently unavailable.
+
+
 ## 0.3.1 (Unity 2022.3 compatibility)
 
 - Replaced Single.IsFinite with IsNaN/IsInfinity checks to avoid .NET API profile incompatibilities in Unity 2022.3.
