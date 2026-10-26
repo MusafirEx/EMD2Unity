@@ -21,7 +21,7 @@ namespace MusafirEx.EMD2Unity
 
         // PEMT files typically live in <character>/motion/, with EMD assets in
         // <character>/model/. This fallback works even when drag-and-drop is awkward.
-        private static List<GameObject> FindNearbyEmdModels(PemtMotionLibrary library)
+        internal static List<GameObject> FindNearbyEmdModels(PemtMotionLibrary library)
         {
             var result = new List<GameObject>();
             string path = AssetDatabase.GetAssetPath(library);
@@ -156,6 +156,8 @@ namespace MusafirEx.EMD2Unity
                     try{PemtAnimationBatchExporter.ExportAll(library,targetEmd,rotateDeltaFirst);}
                     catch(Exception ex){Debug.LogException(ex);EditorUtility.DisplayDialog("PEMT Batch Export Failed",ex.Message,"OK");}
                 }
+                if (GUILayout.Button("Preview Selected Motion (Play / Pause / Timeline)"))
+                    PemtAnimationPreviewWindow.OpenForSource(library, targetEmd, selected.motionId, rotateDeltaFirst);
             }
             EditorGUILayout.HelpBox(
                 "Export All creates a <PEMT name>_Animations folder beside the source PEMT, skips existing .anim files, and shows one summary. You can cancel while retaining exported files.",

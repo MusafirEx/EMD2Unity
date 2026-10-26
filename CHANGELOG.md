@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 (PEMT Animation Preview)
+
+- Added **Tools > EMD2Unity > PEMT Animation Preview** window with isolated 3D character preview.
+- Play/Pause/Stop, frame stepping, time scrubbing, loop, speed adjustment, camera orbit and mouse-wheel zoom.
+- Added **Preview Selected Motion** in both PEMT Inspector and PEMT Motion Browser (shared panel).
+- Uses the same `CreateTransientClip` keyframe decoder as working single and batch export; no different rotation/position conversion.
+- Uses a temporary copy of the imported character EMD in Unity's `PreviewRenderUtility` scene. No .anim asset, Animator Controller, active Scene modifications or destructive source edits. Preview resources are disposed when switched/closed.
+- EMD stage parsing and recovery are unchanged. Live Unity rendering and compile checks still pending.
+
+
 ## 0.3.7 (opt-in partial EMD mesh recovery and vertex diagnostics)
 
 - Added an opt-in **Recover Supported Meshes (skip unsupported polygons)** toggle in the EMD Model tab. Disabled by default to preserve existing successful imports.
