@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace MusafirEx.EMD2Unity
 {
-    [ScriptedImporter(2, "pemt")]
+    [ScriptedImporter(3, "pemt")]
     public sealed class PemtImporter : ScriptedImporter
     {
         public override void OnImportAsset(AssetImportContext ctx)
@@ -71,9 +71,18 @@ namespace MusafirEx.EMD2Unity
             int pointerCount = SafeInt(U32(data, 4), "pointer count");
             int tableStart = SafeInt(U32(data, 8), "pointer table offset");
             int declaredBytes = SafeInt(U32(data, 12), "declared file size");
-            if (pointerCount < 1 || pointerCount > MaxPointerEntries || tableStart != 0x10 ||
-                declaredBytes != data.Length || (long)tableStart + pointerCount * 4L > data.Length)
-                throw new InvalidDataException("PEMT: invalid pointer table or declared file size.");
+            string details = " (header: pointerCount=" + pointerCount +
+                ", tableOffset=0x" + tableStart.ToString("X") +
+                ", declaredSize=" + declaredBytes +
+                ", actualSize=" + data.Length + ").";
+            if (pointerCount < 1 || pointerCount > MaxPointerEntries)
+                throw new InvalidDataException("PEMT: invalid pointer count." + details);
+            if (tableStart != 0x10)
+                throw new InvalidDataException("PEMT: unexpected pointer table offset; expected 0x10." + details);
+            if (declaredBytes != data.Length)
+                throw new InvalidDataException("PEMT: declared and actual file sizes differ." + details);
+            if ((long)tableStart + pointerCount * 4L > data.Length)
+                throw new InvalidDataException("PEMT: pointer table extends past end of file." + details);
 
             long tableEnd = (long)tableStart + pointerCount * 4L;
             var ids = new List<int>();
