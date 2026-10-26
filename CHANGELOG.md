@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.9 — investigate Stage EMD headerType 0x200 zero-mesh records
+
+- Extends the **Diagnose Selected Stage EMD** report when a polygon has `headerType=0x200` and the conventional parser reads zero vertices.
+- Reports polygon record end/size, group-start bytes, first nonzero group word, relative pointer target bytes/words, and global UV-header bytes.
+- Adds a bounded, **read-only** scan for candidate conventional mesh-descriptor headers within the polygon. Every candidate must pass UV stride, index/position continuity, vertex bounds, triangle index and polygon bounds checks. Candidates are *not* automatically converted.
+- Includes companion `.emdi` file presence, size and initial signature (when present). Existing assets are not modified.
+- The `STG30/AREA01.emd` sample log shows a 403,168-byte file with one `0x200` polygon and a zero-vertex group; the previous diagnostics interpreted the first nonzero word as a relative index pointer. Its semantics remain unknown. Model bytes or this extended report are required before implementing a decoder.
+- Existing Stage EMD/Character EMD parser, Preview/Export All, SEQ and CCM unchanged.
+
+
 ## 0.4.8 — guarded contiguous Stage EMD XYZ streams
 
 - STG31/AREA01 diagnosis shows `obj_10` (2220 vertices, index maximum 2219) and `obj_11` (1916 vertices, maximum 1915) each report 0x4000 vertex bytes even though their XYZ triples plausibly continue beyond that boundary. For `obj_10`, the complete float3 stream ends 48 bytes before the next polygon.

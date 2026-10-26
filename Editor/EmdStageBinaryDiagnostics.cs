@@ -91,10 +91,125 @@ namespace MusafirEx.EMD2Unity
             }
         }
 
+
+        // Type 0x200 records can contain routing/pointer-like data where a
+        // conventional group header is expected. Inspect them without treating
+        // arbitrary bytes as mesh geometry.
+        private static void AppendWords(StringBuilder r, byte[] data, long start,
+            long boundary, string label, int maxWords)
+        {
+            r.AppendLine("  " + label + " at " + Hex(start) + ":");
+            if (start < 0 || start >= data.LongLength || start >= boundary)
+            {
+                r.AppendLine("    outside reported boundary");
+                return;
+            }
+            for (int i = 0; i < maxWords; i++)
+            {
+                long at = start + i * 4L;
+                if (at + 4 > data.LongLength || at + 4 > boundary) break;
+                uint raw = U32(data, at);
+                r.AppendLine("    " + Hex(at) + ": 0x" + raw.ToString("X8") +
+                    "  rel-from-base=" + Hex(start + unchecked((int)raw)));
+            }
+        }
+
+        private static void ProbeConventionalMeshHeaders(
+            StringBuilder r, byte[] data, long record, long recordEnd)
+        {
+            // This is evidence gathering ONLY. Search 4-byte aligned positions
+            // within the polygon for headers consistent with the known type-0
+            // layout. An apparent match never becomes a Unity mesh automatically.
+            long end = Math.Min(recordEnd - 0x90, record + 0x100000L);
+            int candidates = 0;
+            int checkedSlots = 0;
+            r.AppendLine("  Candidate conventional mesh headers (read-only scan):");
+            for (long at = record + 0x140; at <= end; at += 4)
+            {
+                checkedSlots++;
+                int points = U16(data, at + 0x88);
+                if (points < 3 || points > 16384) continue;
+                int indices = U16(data, at + 0x8A);
+                if (indices < 3 || indices > 60000 || indices % 3 != 0) continue;
+                int indexBytes = U16(data, at + 4);
+                int positionBytes = U16(data, at + 0x10);
+                if (indexBytes < indices * 2L || positionBytes < 12) continue;
+                int uvBytes = I32(data, at + 0x20);
+                if (uvBytes <= 0 || uvBytes % points != 0) continue;
+                int uvStride = uvBytes / points;
+                if (uvStride < 8 || uvStride > 28 || uvStride % 4 != 0) continue;
+                long indexStart = at + I32(data, at);
+                long positionStart = at + I32(data, at + 8);
+                if (indexStart < record || positionStart < record ||
+                    indexStart + indexBytes != positionStart ||
+                    positionStart + points * 12L > recordEnd)
+                    continue;
+                int maximum = -1;
+                bool valid = true;
+                for (int i = 0; i < indices; i++)
+                {
+                    int value = U16(data, indexStart + i * 2L);
+                    if (value >= points) { valid = false; break; }
+                    if (value > maximum) maximum = value;
+                }
+                if (!valid) continue;
+                candidates++;
+                if (candidates <= 6)
+                    r.AppendLine("    candidate " + candidates + ": header=" + Hex(at) +
+                        " indexStart=" + Hex(indexStart) +
+                        " positionStart=" + Hex(positionStart) +
+                        " points=" + points + " indices=" + indices +
+                        " maxIndex=" + maximum + " uvStride=" + uvStride +
+                        " firstXYZ=" + FloatTriplet(data, positionStart));
+            }
+            r.AppendLine("  Scan checked " + checkedSlots + " aligned positions; " +
+                candidates + " structurally consistent candidate(s). " +
+                "No conversion attempted; candidates are unverified.");
+        }
+
+        private static void InspectType200(StringBuilder report, byte[] data,
+            long record, long recordEnd, long groupStart, long basePos,
+            int firstUVHeader)
+        {
+            report.AppendLine("  TYPE 0x200 / ZERO-VERTEX INVESTIGATION:");
+            report.AppendLine("  polygonEnd=" + Hex(recordEnd) +
+                " polygonBytes=" + (recordEnd - record) +
+                " groupStart=" + Hex(groupStart) +
+                " firstNonzeroWord=" + Hex(basePos));
+            AppendWords(report, data, groupStart, recordEnd,
+                "Group-start BE words", 12);
+            if (basePos != groupStart)
+                AppendWords(report, data, basePos, recordEnd,
+                    "First nonzero BE words", 12);
+            long relativeTarget = basePos + I32(data, basePos);
+            report.AppendLine("  First BE word target (if treated as relative pointer): " +
+                Hex(relativeTarget) + "; within file=" +
+                (relativeTarget >= 0 && relativeTarget < data.LongLength) +
+                "; within polygon=" +
+                (relativeTarget >= record && relativeTarget < recordEnd));
+            if (relativeTarget >= 0 && relativeTarget < data.LongLength)
+            {
+                report.AppendLine("  Target raw bytes: " +
+                    HexBytes(data, relativeTarget, 64));
+                AppendWords(report, data, relativeTarget,
+                    Math.Min(recordEnd, data.LongLength),
+                    "Target BE words", 8);
+            }
+            if (firstUVHeader >= 0 && firstUVHeader < data.LongLength)
+            {
+                report.AppendLine("  First UV section " + Hex(firstUVHeader) +
+                    ": " + HexBytes(data, firstUVHeader, 64));
+            }
+            ProbeConventionalMeshHeaders(report, data, record, recordEnd);
+            report.AppendLine("  Reminder: 0x200 has not been identified as an " +
+                "instance, empty mesh, or alternate topology. Raw game file " +
+                "is needed to establish its semantics.");
+        }
+
         internal static string Analyze(byte[] data, string asset)
         {
             var report = new StringBuilder();
-            report.AppendLine("EMD2Unity Stage EMD Buffer Diagnostics v0.4.7 (read-only)");
+            report.AppendLine("EMD2Unity Stage EMD Buffer Diagnostics v0.4.9 (read-only)");
             report.AppendLine("Asset: " + asset);
             report.AppendLine("Physical bytes: " + data.Length + " (" + Hex(data.Length) + ")");
             report.AppendLine("Note: group 0 only is decoded structurally; other groups need full chaining analysis.");
@@ -180,7 +295,8 @@ namespace MusafirEx.EMD2Unity
                         vertexStart + (long)points * 12 <= data.LongLength;
 
                     // Print all suspicious records, plus a few ordinary records.
-                    bool print = mismatch || beyondChunk > 0 || i < 4;
+                    bool print = mismatch || beyondChunk > 0 || i < 4 ||
+                        (format == 0x200 && points == 0);
                     if (print && detailed++ < MaxDetailed)
                     {
                         report.AppendLine("");
@@ -203,12 +319,21 @@ namespace MusafirEx.EMD2Unity
                             " in physical file=" + wholePositionRangeInFile);
                         if (vertexStart >= 0 && vertexStart < data.LongLength)
                         {
-                            report.AppendLine("  XYZ first vertex: " + FloatTriplet(data, vertexStart));
-                            report.AppendLine("  Bytes at reported vertex chunk end: " +
-                                HexBytes(data, vertexStart + vertexBytes, 24));
-                            report.AppendLine("  XYZ following reported chunk: " +
-                                FloatTriplet(data, vertexStart + vertexBytes));
+                            if (points > 0 && vertexBytes > 0)
+                            {
+                                report.AppendLine("  XYZ first vertex: " + FloatTriplet(data, vertexStart));
+                                report.AppendLine("  Bytes at reported vertex chunk end: " +
+                                    HexBytes(data, vertexStart + vertexBytes, 24));
+                                report.AppendLine("  XYZ following reported chunk: " +
+                                    FloatTriplet(data, vertexStart + vertexBytes));
+                            }
+                            else
+                                report.AppendLine("  XYZ unavailable: zero-vertex/zero-buffer " +
+                                    "group (offset is not a verified XYZ stream).");
                         }
+                        if (format == 0x200 && points == 0)
+                            InspectType200(report, data, record, current,
+                                groupStart, basePos, uvStart);
                     }
                 }
                 catch (Exception ex) when (ex is InvalidDataException || ex is OverflowException)
@@ -246,6 +371,14 @@ namespace MusafirEx.EMD2Unity
                 if (!info.Exists || info.Length > MaxBytes)
                     throw new InvalidDataException("EMD source missing or larger than diagnostic limit (512 MiB).");
                 string report = Analyze(File.ReadAllBytes(path), path);
+                string emdi = Path.ChangeExtension(path, ".emdi");
+                if (File.Exists(emdi))
+                {
+                    byte[] companion = File.ReadAllBytes(emdi);
+                    report += "\nCompanion EMDI: present; bytes=" + companion.Length +
+                        "; first32=" + HexBytes(companion, 0, 32) + "\n";
+                }
+                else report += "\nCompanion EMDI: not found beside EMD.\n";
                 EditorGUIUtility.systemCopyBuffer = report;
                 Debug.Log(report);
                 EditorUtility.DisplayDialog("EMD Stage Diagnostics",

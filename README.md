@@ -19,7 +19,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.4.8.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.4.9.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
@@ -112,6 +112,10 @@ The report checks the **first mesh group of each polygon only**: header offsets,
 For observed Stage EMD polygons that report **0x4000 bytes** for position data but have more vertices, the importer can now read a longer contiguous XYZ stream **only** when index/polygon boundaries and out-of-chunk vertex references provide structural confirmation. Invalid or unfamiliar layouts are still rejected. Each accepted oversized polygon emits a Unity import warning for visual verification.
 
 In particular, `STG31/model/AREA01.emd` reported two such meshes: `obj_10` (2220 vertices) and `obj_11` (1916 vertices). Reimport it using EMD2Unity **v0.4.8** and verify the resulting geometry, UV and triangle topology in Scene view. The separate **Diagnose Stage EMD Buffers** tool remains available.
+
+### Stage EMD headerType 0x200 zero-mesh diagnostics (v0.4.9)
+
+Some stage assets (e.g. `STG30/AREA01.emd`) have a polygon record with `headerType=0x200` for which the conventional group reader reports `pointCount=0` and `vertexBytes=0`. **This does not prove that a 400 KB file contains no geometry.** v0.4.9 expands **Diagnose Stage EMD Buffers (Read-only)** to show the group's raw pointer-like words, target data, global UV section, and any alternative *conventional* mesh headers that pass a bounded structural scan. It also records whether a same-name `.emdi` companion exists. The output is evidence only and does not reconstruct an unverified mesh. The established `0x4000` position-stream support remains as-is.
 
 ## Status
 
