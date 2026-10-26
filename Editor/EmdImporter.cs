@@ -15,7 +15,7 @@ using UnityEngine.Rendering;
 
 namespace MusafirEx.EMD2Unity
 {
-    [ScriptedImporter(1, "emd")]
+    [ScriptedImporter(2, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         [Header("Model")]
@@ -459,9 +459,13 @@ namespace MusafirEx.EMD2Unity
                     r.I32(); r.I32(); r.I32();
                     r.U16(); r.U16(); r.U16(); r.U16();
                     int pointCount = r.U16();
-                    int faceCount = r.U16(); r.I32();
+                    // EMD stores the number of triangle *indices* here, not the number of faces.
+                    // Each triangle contains three 16-bit indices; indexBytes also includes padding.
+                    int indexCount = r.U16(); r.I32();
                     ValidateCount(pointCount, "vertices", 65535);
-                    ValidateCount(faceCount, "faces", 65535);
+                    ValidateCount(indexCount, "triangle indices", 65535);
+                    if (indexCount % 3 != 0)
+                        throw new InvalidDataException("Triangle index count " + indexCount + " is not divisible by 3 in " + name);
                     if (pointCount == 0) continue;
                     int uvStride = uvLength / pointCount;
                     if (uvStride * pointCount != uvLength || uvStride % 4 != 0 || uvStride < 8 || uvStride > 24)
@@ -469,16 +473,18 @@ namespace MusafirEx.EMD2Unity
                     int uvSize = uvStride / 4;
                     if (vertexBytes / 12 < pointCount)
                         throw new InvalidDataException("Vertex buffer smaller than declared point count.");
-                    if (indexBytes / 6 < faceCount)
-                        throw new InvalidDataException("Triangle buffer smaller than declared face count.");
+                    if (indexBytes / sizeof(ushort) < indexCount)
+                        throw new InvalidDataException("Triangle index buffer too small in " + name +
+                            " (declared " + indexCount + " indices / " + (indexCount * sizeof(ushort)) +
+                            " bytes, available " + indexBytes + " bytes).");
 
                     r.Seek(vertexJump);
                     var vertices = new Vector3[pointCount];
                     for (int v = 0; v < pointCount; ++v)
                         vertices[v] = new Vector3(r.F32(), r.F32(), r.F32());
                     r.Seek(indexJump);
-                    var triangles = new int[faceCount * 3];
-                    for (int f = 0; f < faceCount; ++f)
+                    var triangles = new int[indexCount];
+                    for (int f = 0; f < indexCount / 3; ++f)
                     {
                         int a = r.U16(), b = r.U16(), c = r.U16();
                         if (a >= pointCount || b >= pointCount || c >= pointCount)
