@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.3 (experimental numeric CCM-to-PEMT cross-reference)
+
+- Added a read-only **CCM / PEMT Numeric Cross-Reference** section to the existing CCM Inspector and Browser. No CCM, PEMT or EMD binary readers are changed.
+- Scans imported PEMT metadata in a sibling `motion/` directory for the selected character's `combo/0000.ccm`.
+- Reports per-record match counts and inspectable candidate PEMT Motion IDs using four comparisons: full raw CCM code, code low16, low16+0x100, low16+0x200. Displays PEMT name, Motion ID, keyframe duration and track count; allows opening its Motion Browser.
+- Labels results as **numerical hypotheses only**, not proven action-to-motion mapping. This deliberately does not create an Animator Controller, link combo transitions, or trigger animation playback.
+- Retains the existing v0.4.2 CCM structural reader, v0.4.1 SEQ tool, and v0.4.0 PEMT preview/export. Stage model work remains deferred.
+- Live Unity Editor compile and visual validation pending.
+
+
 ## 0.4.2 (read-only CCM combo record Inspector)
 
 - Added a `CCM\\0` ScriptedImporter, `CcmComboLibrary` ScriptableObject and **Tools > EMD2Unity > CCM Browser**.

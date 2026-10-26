@@ -2,6 +2,7 @@
 // for gameplay functions. This panel is shared by the importer and browser.
 #if UNITY_EDITOR
 using System;
+using System.Collections.Generic;
 using System.Text;
 using UnityEditor;
 using UnityEditor.AssetImporters;
@@ -14,6 +15,97 @@ namespace MusafirEx.EMD2Unity
         private int selectedIndex;
         private bool showAllRaw;
         private Vector2 recordScroll;
+        private CcmComboLibrary scannedSource;
+        private List<PemtMotionLibrary> siblingPemt;
+        private bool showPemtEvidence;
+
+        private void DrawPemtComparison(CcmComboLibrary ccm, CcmComboRecord selected)
+        {
+            EditorGUILayout.Space();
+            showPemtEvidence = EditorGUILayout.Foldout(showPemtEvidence,
+                "CCM / PEMT Numeric Cross-Reference (experimental)");
+            if (!showPemtEvidence) return;
+
+            EditorGUILayout.HelpBox(
+                "Numeric matches ONLY: the CCM 0x0007xxxx values are not proven " +
+                "to be PEMT Motion IDs. We test exact 32-bit code, low16, " +
+                "low16+0x100 and low16+0x200 against the sibling motion/*.pemt " +
+                "files. These are competing hypotheses, not playable combo instructions. " +
+                "PEMT Motion ID zero is a common default entry and is especially weak evidence.",
+                MessageType.Warning);
+
+            if (scannedSource != ccm)
+            {
+                scannedSource = ccm;
+                siblingPemt = null;
+            }
+            if (GUILayout.Button("Scan Nearby PEMT Motion IDs (read-only)"))
+                siblingPemt = CcmPemtCorrelation.FindSiblingPemt(ccm);
+
+            if (siblingPemt == null)
+            {
+                EditorGUILayout.HelpBox(
+                    "Press Scan to compare the current CCM with sibling motion/*.pemt. " +
+                    "No files are modified.", MessageType.Info);
+                return;
+            }
+            EditorGUILayout.LabelField("PEMT containers found", siblingPemt.Count.ToString());
+            if (siblingPemt.Count == 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "No imported PEMT metadata was found in the sibling motion/ folder. " +
+                    "Place character/ combo/ and motion/ directories beside one another " +
+                    "and ensure PEMT source files have been imported.", MessageType.Warning);
+                return;
+            }
+            EditorGUILayout.LabelField("Candidate matrix (matches per PEMT container)",
+                EditorStyles.boldLabel);
+            foreach (CcmComboRecord c in ccm.records)
+            {
+                int exact = 0, low16 = 0, plus100 = 0, plus200 = 0;
+                foreach (CcmPemtCandidate hit in CcmPemtCorrelation.Compare(c, siblingPemt))
+                {
+                    switch (hit.comparison)
+                    {
+                        case "Exact CCM uint32 code": exact++; break;
+                        case "Code low16 as PEMT ID": low16++; break;
+                        case "Code low16 + 0x100": plus100++; break;
+                        case "Code low16 + 0x200": plus200++; break;
+                    }
+                }
+                EditorGUILayout.LabelField(
+                    "#" + c.recordIndex.ToString("D2") +
+                    " | low16=0x" + c.codeAt1CIndex.ToString("X3") +
+                    " | exact:" + exact + " direct:" + low16 +
+                    " +100:" + plus100 + " +200:" + plus200,
+                    EditorStyles.wordWrappedMiniLabel);
+            }
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Selected record #" + selected.recordIndex + " candidates",
+                EditorStyles.boldLabel);
+            List<CcmPemtCandidate> matches =
+                CcmPemtCorrelation.Compare(selected, siblingPemt);
+            if (matches.Count == 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "No matching PEMT IDs using the four numerical comparison formulas. " +
+                    "This does not mean the combo has no animation.",
+                    MessageType.Info);
+                return;
+            }
+            foreach (CcmPemtCandidate match in matches)
+            {
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                EditorGUILayout.LabelField(match.comparison, EditorStyles.miniBoldLabel);
+                EditorGUILayout.LabelField("Motion ID", "0x" + match.candidateId.ToString("X3"));
+                EditorGUILayout.LabelField("PEMT", System.IO.Path.GetFileName(match.path));
+                EditorGUILayout.LabelField("Keyframe duration", match.motion.apparentDurationSeconds.ToString("F3") + " seconds");
+                EditorGUILayout.LabelField("Tracks", match.motion.tracks.Count.ToString());
+                if (GUILayout.Button("Open This PEMT in Motion Browser"))
+                    PemtMotionBrowserWindow.OpenForPath(match.path);
+                EditorGUILayout.EndVertical();
+            }
+        }
 
         private static string FormatRow(CcmComboRecord r)
         {
@@ -92,6 +184,7 @@ namespace MusafirEx.EMD2Unity
                     " (link low16, meaning unverified)"))
                     selectedIndex = record.linkAt68Index;
 
+            DrawPemtComparison(library, record);
             showAllRaw = EditorGUILayout.Foldout(showAllRaw, "All 32 raw little-endian words");
             if (showAllRaw)
             {

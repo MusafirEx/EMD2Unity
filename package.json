@@ -1,9 +1,9 @@
 {
   "name": "com.musafirex.emd2unity",
   "displayName": "EMD2Unity - Kamen Rider PS3 EMD Importer",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "unity": "2022.3",
-  "description": "PS3 Sousei EMD model and PEMT motion importer with read-only SEQ/CCM inspectors and animation preview.",
+  "description": "Sousei EMD2Unity: PEMT playback/export, read-only SEQ/CCM inspectors and numerical CCM-to-PEMT candidate comparison.",
   "keywords": [
     "kamen-rider",
     "emd",
