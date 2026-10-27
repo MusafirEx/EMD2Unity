@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 — Stage EMD 0x200 multi-mesh support
+
+- STG30/AREA01.emd has five independently validated mesh descriptors within one type-0x200 polygon: 11,243 vertices and 6,769 triangles. Headers: 0x5B0, 0x9BE0, 0x13110, 0x1C770, and 0x25CB0.
+- Five 20-byte/vertex UV streams use 224,860 of the 224,880 remaining file bytes after the UV offset 0x2B870.
+- The parser now consumes all validated type-0x200 static mesh groups rather than treating the polygon preamble as an empty mesh; UV blocks advance sequentially.
+- Existing guarded 0x4000 position-stream correction applies to these groups. Other header types, character import, PEMT Preview/Export All, SEQ, and CCM remain unchanged.
+- EMD ScriptedImporter revision 9 reimports files. Live Unity compilation and mesh/UV appearance need verification.
+
+
 ## 0.4.9 — investigate Stage EMD headerType 0x200 zero-mesh records
 
 - Extends the **Diagnose Selected Stage EMD** report when a polygon has `headerType=0x200` and the conventional parser reads zero vertices.
