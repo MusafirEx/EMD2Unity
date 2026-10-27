@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.1 — diagnose and synthesize missing bone axes
+
+- Added **Repair Missing Bone Axes (Experimental)** to the EMD **Rig** inspector (enabled by default, switch off for strict import).
+- Detects whether the X, Y, or Z axis of a bone's transform matrix has magnitude below 1e-6 and includes the bone index, node ID, name and original axis magnitudes in Unity import warnings.
+- For one missing axis and two independent surviving axes, reconstructs the missing direction with a cross product; the generated axis has unit magnitude. For multiple missing or collinear axes, builds an orthogonal frame around a surviving direction, or identity when none survive.
+- Preserves translation and nondegenerate transforms; refuses non-finite input. Synthesized orientation and handedness require visual inspection and animation testing.
+- The existing **DRV02.emd / DRV03.emd** import errors prompted this addition; actual bone identity and successful reimport remain unverified until tested in Unity.
+- EMD ScriptedImporter revision 10 triggers reimports. Stage EMD 0x200 meshes, PEMT Preview/Export All, SEQ and CCM are unchanged.
+
+
 ## 0.5.0 — Stage EMD 0x200 multi-mesh support
 
 - STG30/AREA01.emd has five independently validated mesh descriptors within one type-0x200 polygon: 11,243 vertices and 6,769 triangles. Headers: 0x5B0, 0x9BE0, 0x13110, 0x1C770, and 0x25CB0.
