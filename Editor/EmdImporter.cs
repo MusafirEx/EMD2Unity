@@ -16,7 +16,7 @@ using UnityEngine.Rendering;
 
 namespace MusafirEx.EMD2Unity
 {
-    [ScriptedImporter(9, "emd")]
+    [ScriptedImporter(10, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         [Header("Model")]
@@ -27,6 +27,7 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private bool recoverSupportedPolygons = false;
         [Header("Rig")]
         [SerializeField] private bool importSkeleton = true;
+        [SerializeField] private bool repairDegenerateBoneAxes = true;
         [Header("Materials")]
         [SerializeField] private bool findNearbyTextures = true;
         [SerializeField] private bool useEmatTextureReferences = true;
@@ -70,22 +71,129 @@ namespace MusafirEx.EMD2Unity
             return source;
         }
 
-        private static void SetLocalMatrix(Transform transform, Matrix4x4 matrix)
+        private static bool FiniteAxis(Vector3 value)
         {
+            return !float.IsNaN(value.x) && !float.IsInfinity(value.x) &&
+                   !float.IsNaN(value.y) && !float.IsInfinity(value.y) &&
+                   !float.IsNaN(value.z) && !float.IsInfinity(value.z);
+        }
+
+        private static Vector3 PerpendicularUnit(Vector3 unitAxis)
+        {
+            Vector3 reference = Mathf.Abs(unitAxis.y) < 0.9f ? Vector3.up : Vector3.right;
+            return (reference - unitAxis * Vector3.Dot(reference, unitAxis)).normalized;
+        }
+
+        // Returns a warning description only when a synthetic frame was needed.
+        // Never alter complete, nondegenerate source transforms.
+        private static string SetLocalMatrix(Transform transform, Matrix4x4 matrix,
+            bool repairMissingAxes)
+        {
+            const float MinLength = 1e-6f;
             Vector3 right = new Vector3(matrix.m00, matrix.m10, matrix.m20);
             Vector3 up = new Vector3(matrix.m01, matrix.m11, matrix.m21);
             Vector3 forward = new Vector3(matrix.m02, matrix.m12, matrix.m22);
+            Vector3 position = new Vector3(matrix.m03, matrix.m13, matrix.m23);
+            if (!FiniteAxis(right) || !FiniteAxis(up) ||
+                !FiniteAxis(forward) || !FiniteAxis(position))
+                throw new InvalidDataException("Bone matrix has non-finite values; cannot reconstruct axes.");
+
+            float xLen = right.magnitude, yLen = up.magnitude, zLen = forward.magnitude;
+            if (float.IsInfinity(xLen) || float.IsInfinity(yLen) || float.IsInfinity(zLen))
+                throw new InvalidDataException("Bone matrix axis magnitude is not finite.");
+
+            bool missingX = xLen < MinLength;
+            bool missingY = yLen < MinLength;
+            bool missingZ = zLen < MinLength;
+            int missingCount = (missingX ? 1 : 0) + (missingY ? 1 : 0) +
+                               (missingZ ? 1 : 0);
+            string repairDescription = null;
+            if (missingCount > 0)
+            {
+                string names = (missingX ? "X " : "") +
+                               (missingY ? "Y " : "") +
+                               (missingZ ? "Z " : "");
+                if (!repairMissingAxes)
+                    throw new InvalidDataException(
+                        "Bone transform has zero-length axis: " + names.Trim() +
+                        " (X=" + xLen + ", Y=" + yLen + ", Z=" + zLen + "). " +
+                        "Enable Repair Missing Bone Axes on the Rig tab to use synthetic axes.");
+
+                // A single missing axis is recovered from the other two if
+                // their directions span a plane. Cross products choose a
+                // right-handed basis; the original missing-axis sign is unknown.
+                bool reconstructed = false;
+                if (missingCount == 1)
+                {
+                    Vector3 cross = missingX ? Vector3.Cross(up / yLen, forward / zLen) :
+                                    missingY ? Vector3.Cross(forward / zLen, right / xLen) :
+                                               Vector3.Cross(right / xLen, up / yLen);
+                    if (cross.sqrMagnitude > 1e-8f)
+                    {
+                        if (missingX) right = cross.normalized;
+                        else if (missingY) up = cross.normalized;
+                        else forward = cross.normalized;
+                        reconstructed = true;
+                        repairDescription = "cross-product reconstruction (unit-length replacement)";
+                    }
+                }
+
+                if (!reconstructed)
+                {
+                    // Two/three missing axes, or near-parallel valid axes:
+                    // keep one known direction as an anchor and construct
+                    // a unit right-handed reference frame around it.
+                    if (!missingZ)
+                    {
+                        Vector3 z = forward / zLen;
+                        Vector3 y = PerpendicularUnit(z);
+                        right = Vector3.Cross(y, z);
+                        up = y;
+                        repairDescription = "fallback orthogonal frame anchored to Z";
+                    }
+                    else if (!missingY)
+                    {
+                        Vector3 y = up / yLen;
+                        Vector3 z = PerpendicularUnit(y);
+                        right = Vector3.Cross(y, z);
+                        forward = z;
+                        repairDescription = "fallback orthogonal frame anchored to Y";
+                    }
+                    else if (!missingX)
+                    {
+                        Vector3 x = right / xLen;
+                        Vector3 y = PerpendicularUnit(x);
+                        up = y;
+                        forward = Vector3.Cross(x, y);
+                        repairDescription = "fallback orthogonal frame anchored to X";
+                    }
+                    else
+                    {
+                        right = Vector3.right;
+                        up = Vector3.up;
+                        forward = Vector3.forward;
+                        repairDescription = "identity fallback (all three axes missing)";
+                    }
+                }
+                repairDescription = "original missing axes [" + names.Trim() + "]; " +
+                    repairDescription + "; original magnitudes X=" +
+                    xLen.ToString("G5") + " Y=" + yLen.ToString("G5") +
+                    " Z=" + zLen.ToString("G5") +
+                    ". Reconstructed axes/orientation require visual validation.";
+            }
+
             Vector3 scale = new Vector3(right.magnitude, up.magnitude, forward.magnitude);
-            if (scale.x < 1e-6f || scale.y < 1e-6f || scale.z < 1e-6f)
-                throw new InvalidDataException("Bone transform has a zero-length axis.");
-            if (Vector3.Dot(Vector3.Cross(right, up), forward) < 0)
+            if (scale.x < MinLength || scale.y < MinLength || scale.z < MinLength)
+                throw new InvalidDataException("Bone axes could not be reconstructed.");
+            if (Vector3.Dot(Vector3.Cross(right, up), forward) < 0f)
             {
                 scale.x = -scale.x;
                 right = -right;
             }
-            transform.localPosition = new Vector3(matrix.m03, matrix.m13, matrix.m23);
+            transform.localPosition = position;
             transform.localRotation = Quaternion.LookRotation(forward / scale.z, up / scale.y);
             transform.localScale = scale;
+            return repairDescription;
         }
 
         private void CreateUnityAssets(AssetImportContext ctx, EmdDocument doc)
@@ -224,7 +332,13 @@ namespace MusafirEx.EMD2Unity
                     int parent = doc.Bones[i].Parent;
                     if (parent >= 0 && parent < bones.Length && parent != i)
                         bones[i].SetParent(bones[parent], false);
-                    SetLocalMatrix(bones[i], ConvertBoneMatrix(doc.Bones[i].LocalMatrix));
+                    string boneRepair = SetLocalMatrix(
+                        bones[i], ConvertBoneMatrix(doc.Bones[i].LocalMatrix),
+                        repairDegenerateBoneAxes);
+                    if (!string.IsNullOrEmpty(boneRepair))
+                        doc.ImportWarnings.Add("EMD synthesized bone transform #" + i +
+                            " (node ID " + doc.Bones[i].NodeID +
+                            ", name '" + bones[i].name + "'): " + boneRepair);
                 }
             }
             for (int i = 0; i < doc.Groups.Count; ++i)
