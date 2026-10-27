@@ -117,6 +117,10 @@ In particular, `STG31/model/AREA01.emd` reported two such meshes: `obj_10` (2220
 
 Some stage assets (e.g. `STG30/AREA01.emd`) have a polygon record with `headerType=0x200` for which the conventional group reader reports `pointCount=0` and `vertexBytes=0`. **This does not prove that a 400 KB file contains no geometry.** v0.4.9 expands **Diagnose Stage EMD Buffers (Read-only)** to show the group's raw pointer-like words, target data, global UV section, and any alternative *conventional* mesh headers that pass a bounded structural scan. It also records whether a same-name `.emdi` companion exists. The output is evidence only and does not reconstruct an unverified mesh. The established `0x4000` position-stream support remains as-is.
 
+### Bone axis recovery (v0.5.1)
+
+The Rig tab now has **Repair Missing Bone Axes (Experimental)**, enabled by default. When an EMD bone has a zero-length X, Y or Z matrix axis, the importer reconstructs one missing axis from the other two using a cross product. If there is insufficient independent axis information it generates a fallback orthogonal frame. Console warnings identify each affected bone and the recovery method. Turn the option off to enforce strict import. Synthetic transforms can alter pose/skinning; visually verify DRV02/DRV03 and test their animations.
+
 ## Status
 
 | Component | Status |
