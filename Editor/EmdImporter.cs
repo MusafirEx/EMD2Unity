@@ -332,13 +332,22 @@ namespace MusafirEx.EMD2Unity
                     int parent = doc.Bones[i].Parent;
                     if (parent >= 0 && parent < bones.Length && parent != i)
                         bones[i].SetParent(bones[parent], false);
-                    string boneRepair = SetLocalMatrix(
-                        bones[i], ConvertBoneMatrix(doc.Bones[i].LocalMatrix),
-                        repairDegenerateBoneAxes);
-                    if (!string.IsNullOrEmpty(boneRepair))
-                        doc.ImportWarnings.Add("EMD synthesized bone transform #" + i +
-                            " (node ID " + doc.Bones[i].NodeID +
-                            ", name '" + bones[i].name + "'): " + boneRepair);
+                    try
+                    {
+                        string boneRepair = SetLocalMatrix(
+                            bones[i], ConvertBoneMatrix(doc.Bones[i].LocalMatrix),
+                            repairDegenerateBoneAxes);
+                        if (!string.IsNullOrEmpty(boneRepair))
+                            doc.ImportWarnings.Add("EMD synthesized bone transform #" + i +
+                                " (node ID " + doc.Bones[i].NodeID +
+                                ", name '" + bones[i].name + "'): " + boneRepair);
+                    }
+                    catch (InvalidDataException ex)
+                    {
+                        throw new InvalidDataException(
+                            "Bone #" + i + " (node ID " + doc.Bones[i].NodeID +
+                            ", name '" + bones[i].name + "'): " + ex.Message, ex);
+                    }
                 }
             }
             for (int i = 0; i < doc.Groups.Count; ++i)
