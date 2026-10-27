@@ -76,6 +76,16 @@ namespace MusafirEx.EMD2Unity
                     break;
                 case 1:
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("importSkeleton"), new GUIContent("Import Skeleton & Skin Weights"));
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("repairDegenerateBoneAxes"),
+                        new GUIContent("Repair Missing Bone Axes (Experimental)"));
+                    EditorGUILayout.HelpBox(
+                        "When a bone has a zero-length X, Y or Z axis, rebuild one missing axis " +
+                        "from the other two using a cross product. If too few independent axes " +
+                        "remain, synthesize an orthogonal reference frame. Every repaired bone " +
+                        "is identified in Console by name, node ID, original axis lengths and " +
+                        "recovery method. Enabled by default; turn off for strict import. " +
+                        "Fake axes may not reproduce the source pose exactly.",
+                        MessageType.Warning);
                     EditorGUILayout.HelpBox("Skeleton and four-influence skinning are experimental until validated against a real Battride War Genesis EMD file. Generic/Humanoid avatar mapping is not automatic.", MessageType.Info);
                     break;
                 case 2:
