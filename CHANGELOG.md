@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased (experimental branch) — EMD weapon binary round-trip audit
+
+- Added read-only **Weapon EMD Round-Trip Audit** Unity Editor window, comparing source and patched imported `.emd` files byte-for-byte.
+- Verifies matching polygon structure/vertex layout, counts exact byte differences and non-position changes, calculates changed vertices and maximum XYZ delta per mesh, and records original/patched SHA-256.
+- Output goes to Editor UI and Unity Console so the MCP bridge can read the results without direct binary access. No edits to files or scene.
+
 ## Unreleased (experimental branch) — weapon EMD position-only patch proof of concept
 
 - Added a standalone Unity Editor **Weapon EMD Position Patch** tool for existing `_Wxx.emd` assets, initially scoped to `DRV00_W00.emd`. It modifies only big-endian float32 positions and writes a new file, preserving original bones, weight streams, material/texture information, UVs, vertex color data and all unknown source bytes.
