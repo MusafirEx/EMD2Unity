@@ -92,16 +92,18 @@ namespace MusafirEx.EMD2Unity
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("findNearbyTextures"), new GUIContent("Find DDS/PNG Textures Nearby"));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("useEmatTextureReferences"), new GUIContent("Read Companion EMAT Texture Names"));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("preferUniqueColourMap"),
-                        new GUIContent("Prefer Unique _CO for Diffuse"));
+                        new GUIContent("Prefer Referenced _CO for Diffuse"));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("linkNormalMaps"), new GUIContent("Link Normal Textures (Opt-in)"));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("linkSpecularMaps"), new GUIContent("Link Specular Textures (Opt-in)"));
                     EditorGUILayout.HelpBox(
-                        "By default, when the first EMD submaterial is an auxiliary " +
-                        "_LI/_BL/_SP/_NO map, a uniquely named _CO reference from " +
-                        "that EMD material or its matching EMAT will be used " +
-                        "for Diffuse/Base Map. Ambiguous alternatives are NOT guessed. " +
-                        "Switch off Prefer Unique _CO to retain the original binding. " +
-                        "Unimportable DDS can fall back to a loadable same-name PNG/TGA.",
+                        "If a first EMD submaterial is an auxiliary _LI/_BL/_SP/_NO, " +
+                        "use a single explicitly referenced _CO when unique; or, " +
+                        "when several _CO names exist, only the exact material-stem match " +
+                        "(for example ground02_BL -> ground02_CO). All candidates must " +
+                        "be locally loadable Texture2D assets. Unresolved cases keep " +
+                        "their original assignments. This is a single-texture fallback, " +
+                        "NOT reconstructed PS3 multi-texture blending. Disable the option " +
+                        "to retain the original first-submaterial mapping.",
                         MessageType.Info);
                     if (GUILayout.Button("Diagnose EMD Texture Bindings (Read-only)"))
                     {
