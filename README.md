@@ -42,6 +42,20 @@ This preset is based on user-verified STG texturing and is **on by default** for
 Stage defaults do **not** apply to non-STG character/motion models; no original game EMD, EMAT or DDS data is edited. Existing EMD subassets will be reimported when Unity detects the updated ScriptedImporter revision 16. You can confirm the actual effective parser flags in **Diagnose EMD UV Mapping (Read-only)**.
 
 
+### Experimental weapon EMD position-only patch (draft branch)
+
+The `feat/weapon-emd-position-patch-prototype` branch adds **Tools → EMD2Unity → Weapon EMD Position Patch (Experimental)**. This is deliberately **not** a general EMD exporter: it edits only the 12-byte big-endian XYZ positions in a copy of an original `_Wxx.emd`. The imported file's bone matrices/IDs, weight records, vertex order, triangle indices, materials, UV coordinates, vertex colors, unknown header fields and original bytes otherwise remain untouched. It never writes the original source asset.
+
+Verified source sample: `DRV00_W00.emd` from the user (86,432 bytes), with 4 single-group type-0x0004 polygons, 1,754 vertices, 1,596 triangles, 3 bones and 3 materials. Each UV record is 8 bytes and every vertex is weighted to exactly one bone. A Python byte-for-byte unmodified XYZ coordinate round-trip across all vertices reproduced the original SHA-256 exactly. This does **not** establish that arbitrary edited models are accepted by the PS3 game.
+
+1. In the Unity **Project**, select the imported original `DRV00_W00.emd` GameObject asset and duplicate a copy as an editable model (or use a copy of its mesh assets). Keep all existing mesh children named `handleblade_0`, `emblem_00_1`, `car_wild_2`, `car_vegas_3`, and their identity local transforms.
+2. Modify **only vertex positions** on readable, independently duplicated meshes. Never edit the original imported mesh asset (which would be overwritten on reimport). Do not change triangle/vertex order, weight assignments, material count or bone hierarchy.
+3. Open **Tools → EMD2Unity → Weapon EMD Position Patch (Experimental)**. Drag the original `.emd` imported GameObject into **Original .emd Model Asset**, and the edited scene/prefab root into **Edited Model Root**.
+4. Export to a **new path** (e.g., `DRV00_W00_patched.emd`). For the first no-op test, use the unmodified original as both source and edited model; the output should be byte-identical.
+5. Reimport the patched EMD in a separate Unity test folder and compare mesh vertex counts, UVs, attachment bones and shading before any game replacement. Preserve a backup of the game archive/source.
+
+Strict limitations: only single-group polygon type `0x0004`, source filename matching `_Wxx.emd`, identical triangle array and skin weights, identical mesh child names and identity transforms, and unchanged materials/UVs. New topology, arbitrary FBX vertex ordering, new bones, changed weights, animation and EMDI generation are **not** supported. Since this patch does not change material entries or their ordering, retain the **original matching EMDI** for the initial weapon replacement test. Unity compilation and actual PS3 compatibility are pending independent validation.
+
 ## How to use
 
 1. Extract `.EMD` model files from your own game files. This package does not extract NCAT archives or package game assets.
