@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.4 — STG DDS batch audit and conservative partial-mipmap repair
+
+- Added **Tools > EMD2Unity > STG DDS Batch Repair** to scan all DDS files recursively under `Assets/KRBWS/stg`, with a read-only inventory and optional CSV audit.
+- Safely identifies only classic, single-surface **DXT1/DXT3/DXT5** 2D DDS containing structurally complete but **partial mipmap chains**. Validates the DDS header, dimensions, declared mip count, full theoretical mip count and exact compressed payload sizes before allowing a repair.
+- **Apply Safe Fixes (Backups)** requires explicit confirmation. It first saves each original file to `<Unity Project>/EMD2Unity_DDS_Backups/Assets/KRBWS/stg/...` (outside `Assets`), then replaces that DDS with a one-level DDS containing **the identical top-mip compressed data**, corrected mip flags, and no trailing partial mip levels. The existing path, basename and Unity `.meta` GUID stay unchanged for material references.
+- Malformed DDS, non-FourCC pixel layouts, unknown compression, cubemaps, volume textures, inconsistent byte counts, already-valid DDS and preexisting backups are **never overwritten**. Failed repairs and ambiguous textures (including files like STG01/enkei01_CO.dds) are reported for separate analysis.
+- Verified the header rewrite and top-resolution data preservation on provided STG01/jimen01_BL.dds (512x512 DXT1; 4 stored mips; 174,208 -> 131,200 bytes). Unity Editor import testing and full-project scan remain pending; not all unsupported DDS errors share the same cause.
+- No change to EMD/PEMT/SEQ/CCM parsing, rigging or animation export.
+
+
 ## 0.5.3 — experimental PEMT 0x02040022 scale-candidate preview
 
 - The DRV02/0000.pemt Motion 0x100 diagnostic identifies an unsupported track #56, info 0x01400001 (joint candidate j320, one key). Its payload at 0xAA80 is 00 00 3C 00 3C 00 00 00, which decodes as four big-endian float16 values (0, 1, 1, 0). It sits between position and rotation tracks for the same bone. **Scale XYZ plus padding is a hypothesis, not established format semantics.**
