@@ -157,6 +157,16 @@ If Scan reports **21 repairable DDS** but Apply reports `Repaired 0 / Skipped 21
 
 **Important:** `No mip fix needed` does not mean Unity has accepted every DDS. Files already stored as a single mip level, such as `stg01_enkei01_CO.dds`, may still need a separate investigation if Unity reports `Unsupported ...dds file`.
 
+### EMD texture mapping audit and safe _CO preference (v0.5.6)
+
+Some STG models appear to have incorrect surface textures. For example, selected `Assets/KRBWS/stg/STG31/model/AREA00.emd` has eight imported meshes and references three `_LI` textures plus one `_CO`. These suffixes indicate a possible misuse of auxiliary light-related data as the diffuse/Base Map, but do not prove which renderer is wrong.
+
+Open the source `.emd` in Project and click the **Materials** tab, then **Diagnose EMD Texture Bindings (Read-only)**, or use **Tools > EMD2Unity > Diagnose Selected EMD Texture Bindings**. This copies a source-material/submaterial/EMAT and mesh-to-Unity-texture mapping report to the clipboard and Unity Console. It makes no changes. Compare material name, original texture reference, candidate `_CO` paths, and actual renderer texture for each mesh.
+
+**Prefer Unique _CO for Diffuse** is enabled by default. The importer changes an auxiliary first submaterial (`_LI`, `_BL`, `_SP`, `_NO`) only when exactly one distinct `_CO` is explicitly referenced by that material's EMD submaterials or its companion EMAT. It does *not* assume a globally similar filename is correct; ambiguous choices keep the original texture and issue a warning. Disable this checkbox and click Apply to preserve the old selection. This is still an experimental interpretation of the game's render materials.
+
+Texture loading remains within the EMD's local `textures/` folder or model folder and now uses a deterministic order. If a local DDS is not importable as a Unity `Texture2D`, a same-basename loadable PNG/TGA can be tried without renaming materials. An auxiliary map with no explicit `_CO` counterpart is not automatically changed. This feature does not alter the original EMD/DDS bytes.
+
 ## Status
 
 | Component | Status |
