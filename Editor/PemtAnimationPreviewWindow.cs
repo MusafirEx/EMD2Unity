@@ -15,6 +15,7 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private int motionId = -1;
         [SerializeField] private bool deltaRotationFirst;
         [SerializeField] private bool allowPartialPreview;
+        [SerializeField] private bool experimentalScale022;
         [SerializeField] private bool loop = true;
         [SerializeField] private float speed = 1f;
         [SerializeField] private float time;
@@ -26,6 +27,7 @@ namespace MusafirEx.EMD2Unity
         private float duration;
         private bool playing;
         private bool partialPreviewLoaded;
+        private bool experimentalScaleLoaded;
         private double lastTime;
         private float yaw = -25f, pitch = 15f, zoom = 1.35f;
         private string feedback = "Choose a PEMT, a matching EMD and a Motion ID, then Build Preview.";
@@ -100,6 +102,7 @@ namespace MusafirEx.EMD2Unity
             }
             duration = 0f;
             partialPreviewLoaded = false;
+            experimentalScaleLoaded = false;
         }
 
         private void ResetPreview()
@@ -139,10 +142,20 @@ namespace MusafirEx.EMD2Unity
                 // Decoder checks imported rig and resolves linked prefab instances.
                 // Unknown markers are skipped only with explicit Preview opt-in.
                 var skipped = new List<string>();
+                var decodedExperimental = new List<string>();
                 clip = PemtAnimationClipExporter.CreateTransientClip(
                     pemt, selected, emd, deltaRotationFirst,
-                    allowPartialPreview, skipped);
+                    allowPartialPreview, skipped,
+                    experimentalScale022, decodedExperimental);
                 partialPreviewLoaded = skipped.Count > 0;
+                experimentalScaleLoaded = decodedExperimental.Count > 0;
+                if (experimentalScaleLoaded)
+                    Debug.LogWarning("EMD2Unity PEMT EXPERIMENTAL SCALE PREVIEW: " +
+                        AssetDatabase.GetAssetPath(pemt) + " | Motion " +
+                        selected.motionIdHex + " (" + selected.motionId + ")" +
+                        " interpreted " + decodedExperimental.Count +
+                        " track(s) with UNVERIFIED scale-multiplier semantics.\n" +
+                        string.Join("\n", decodedExperimental.ToArray()));
                 if (partialPreviewLoaded)
                 {
                     Debug.LogWarning("EMD2Unity PEMT PARTIAL PREVIEW: " +
@@ -172,6 +185,11 @@ namespace MusafirEx.EMD2Unity
                         " unsupported track(s) skipped. Some bones/channels remain " +
                         "at rest pose; this is NOT a complete animation. " +
                         "See Console or Copy Motion Track Report for details.";
+                if (experimentalScaleLoaded)
+                    feedback += "\nEXPERIMENTAL SCALE: " + decodedExperimental.Count +
+                        " track(s) interpreted as 0x02040022 scale multipliers. " +
+                        "Channel meaning and rest-pose multiplication are UNVERIFIED. " +
+                        "Inspect joint scale and the model visually.";
             }
             catch
             {
@@ -260,6 +278,20 @@ namespace MusafirEx.EMD2Unity
             }
             bool first = EditorGUILayout.Toggle("Delta Rotation First", deltaRotationFirst);
             if (first != deltaRotationFirst) { deltaRotationFirst = first; ResetPreview(); }
+            bool tryScale = EditorGUILayout.ToggleLeft(
+                "Experimental Scale 0x02040022 (Preview ONLY)", experimentalScale022);
+            if (tryScale != experimentalScale022)
+            {
+                experimentalScale022 = tryScale;
+                ResetPreview();
+            }
+            if (experimentalScale022)
+                EditorGUILayout.HelpBox(
+                    "UNVERIFIED: treats marker 0x02040022 as 3 big-endian " +
+                    "float16 scale multipliers + zero padding. Example j320 " +
+                    "values (0,1,1,0) will set local X scale to zero. " +
+                    "No .anim exports are affected. Verify mesh and bone poses.",
+                    MessageType.Warning);
             bool partial = EditorGUILayout.ToggleLeft(
                 "Allow Partial Preview (skip unsupported track markers)", allowPartialPreview);
             if (partial != allowPartialPreview) { allowPartialPreview = partial; ResetPreview(); }
@@ -375,7 +407,8 @@ namespace MusafirEx.EMD2Unity
             Rect rect = GUILayoutUtility.GetRect(1f, 300f, GUILayout.ExpandWidth(true));
             DrawModel(rect);
             EditorGUILayout.HelpBox(feedback,
-                partialPreviewLoaded ? MessageType.Warning : MessageType.Info);
+                (partialPreviewLoaded || experimentalScaleLoaded) ?
+                    MessageType.Warning : MessageType.Info);
             EditorGUILayout.LabelField("Drag to orbit, mouse wheel to zoom. Only a disposable preview copy is animated; no Scene changes or .anim files.", EditorStyles.wordWrappedMiniLabel);
         }
     }
