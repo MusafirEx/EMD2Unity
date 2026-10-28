@@ -226,7 +226,49 @@ namespace MusafirEx.EMD2Unity
                 item.path.Replace('/', Path.DirectorySeparatorChar));
         }
 
-        private static void RepairOne(Item item)
+        // Never overwrite an existing backup. A repeated Apply can encounter
+        // old backups even when the original DDS was never successfully repaired.
+        // Reserve a unique file using CreateNew (race-safe) and preserve every
+        // existing copy, including those made by earlier EMD2Unity versions.
+        private static string SaveUniqueBackup(Item item, byte[] original)
+        {
+            string firstPath = BackupPath(item);
+            string directory = Path.GetDirectoryName(firstPath);
+            Directory.CreateDirectory(directory);
+            for (int number = 0; number <= 9999; number++)
+            {
+                string destination = number == 0 ? firstPath :
+                    Path.Combine(directory, Path.GetFileNameWithoutExtension(firstPath) +
+                        ".backup-" + number.ToString("D4") + Path.GetExtension(firstPath));
+                FileStream stream;
+                try
+                {
+                    stream = new FileStream(destination, FileMode.CreateNew,
+                        FileAccess.Write, FileShare.None);
+                }
+                catch (IOException)
+                {
+                    if (File.Exists(destination)) continue; // Existing backup is preserved.
+                    throw;
+                }
+                try
+                {
+                    using (stream) stream.Write(original, 0, original.Length);
+                    return destination;
+                }
+                catch
+                {
+                    stream.Dispose();
+                    try { File.Delete(destination); }
+                    catch (IOException) { /* Surface the original write failure. */ }
+                    catch (UnauthorizedAccessException) { /* Preserve original error. */ }
+                    throw;
+                }
+            }
+            throw new IOException("All 10000 backup names are already occupied: " + firstPath);
+        }
+
+        private static string RepairOne(Item item)
         {
             // Revalidate the file immediately before writing; no stale scan data.
             Item fresh = Analyze(item.path);
@@ -235,10 +277,6 @@ namespace MusafirEx.EMD2Unity
                 fresh.declaredMips != item.declaredMips)
                 throw new InvalidDataException("Source changed after scan; scan again.");
 
-            string backup = BackupPath(item);
-            if (File.Exists(backup))
-                throw new IOException("Existing backup will not be overwritten: " + backup);
-            Directory.CreateDirectory(Path.GetDirectoryName(backup));
             byte[] original = File.ReadAllBytes(item.path);
             if (original.LongLength != item.bytes)
                 throw new InvalidDataException("Source size changed during repair.");
@@ -249,14 +287,16 @@ namespace MusafirEx.EMD2Unity
             PutWord(fixedData, 108,
                 (Word(fixedData, 108) & ~(DdscapsComplex | DdscapsMipmap)) |
                  DdscapsTexture);
-            // Preserve DXT compression, original dimensions, top mip payload,
-            // FourCC and .meta GUID. Only the mip metadata and lower mip data change.
-            string temp = item.path + ".emd2unity-tmp";
-            File.Copy(item.path, backup, false);
+            // Preserve DXT compression, dimensions, top mip payload and .meta.
+            string backup = SaveUniqueBackup(item, original);
+            string temp = item.path + ".emd2unity-tmp-" + Guid.NewGuid().ToString("N");
             try
             {
-                File.WriteAllBytes(temp, fixedData);
+                using (var stream = new FileStream(temp, FileMode.CreateNew,
+                    FileAccess.Write, FileShare.None))
+                    stream.Write(fixedData, 0, fixedData.Length);
                 File.Replace(temp, item.path, null);
+                return backup;
             }
             finally
             {
@@ -273,13 +313,15 @@ namespace MusafirEx.EMD2Unity
                 fixable + " DDS file(s) under " + Root + "?\n\n" +
                 "The original files will be backed up to:\n" +
                 Path.Combine(project, "EMD2Unity_DDS_Backups") +
+                "\nExisting backup files remain untouched; unique numbered " +
+                "backup names are created when needed." +
                 "\n\nNo unknown, malformed or otherwise unsupported DDS will be changed. " +
                 "Source paths and Unity .meta files remain intact.\n\n" +
                 "This is opt-in. Consider a separate project backup first.",
                 "Back Up Originals & Repair", "Cancel"))
                 return;
 
-            int repaired = 0, failed = 0;
+            int repaired = 0, failed = 0, versionedBackups = 0;
             try
             {
                 for (int i = 0; i < results.Count; i++)
@@ -291,8 +333,13 @@ namespace MusafirEx.EMD2Unity
                         (float)i / results.Count)) break;
                     try
                     {
-                        RepairOne(item);
+                        string backup = RepairOne(item);
                         repaired++;
+                        if (!string.Equals(backup, BackupPath(item),
+                            StringComparison.OrdinalIgnoreCase))
+                            versionedBackups++;
+                        Debug.Log("EMD2Unity STG DDS repaired: " + item.path +
+                            " | Backup: " + backup);
                     }
                     catch (Exception ex)
                     {
@@ -307,7 +354,8 @@ namespace MusafirEx.EMD2Unity
                 EditorUtility.ClearProgressBar();
                 if (repaired > 0) AssetDatabase.Refresh();
             }
-            lastAction = "Repaired " + repaired + " DDS file(s) with original backups. " +
+            lastAction = "Repaired " + repaired + " DDS file(s) with original backups " +
+                "(" + versionedBackups + " versioned backup names). " +
                 "Skipped/failed " + failed + ". Scan again to verify. " +
                 "Inspect any remaining unsupported DDS separately.";
             Debug.Log("EMD2Unity STG DDS: " + lastAction);
@@ -346,7 +394,8 @@ namespace MusafirEx.EMD2Unity
                 "Scans Assets/KRBWS/stg recursively. Identifies exact-size " +
                 "DXT1/DXT3/DXT5 partial mip chains. Automatic repair keeps the top " +
                 "compressed image and removes incomplete lower mip levels. " +
-                "Original DDS backups are made outside Assets. Unsupported formats " +
+                "Original DDS backups are made outside Assets; existing backups " +
+                "are preserved using unique numbered filenames. Unsupported formats " +
                 "and non-mip errors are NOT guessed or changed.", MessageType.Info);
 
             EditorGUILayout.BeginHorizontal();
