@@ -66,7 +66,7 @@ def build(destination):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", default="EMD2Unity-v0.5.6.unitypackage")
+    parser.add_argument("--output", default="EMD2Unity-v0.5.7.unitypackage")
     args = parser.parse_args()
     output = pathlib.Path(args.output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
