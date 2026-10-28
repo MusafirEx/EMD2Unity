@@ -13,6 +13,7 @@ FILES = (
     "Editor/EmdStageBinaryDiagnostics.cs",
     "Editor/EmdTextureBindingDiagnostics.cs",
     "Editor/EmdUvMappingDiagnostics.cs",
+    "Editor/EmdWeaponPositionPatchWindow.cs",
     "Editor/StgDdsBatchRepairWindow.cs",
     "Editor/PemtImporter.cs",
     "Editor/PemtBinaryDiagnostics.cs",
