@@ -68,10 +68,32 @@ namespace MusafirEx.EMD2Unity
                         "Optional stage-EMD recovery: keeps valid polygon records if others have unsupported vertex/index layouts. Skipped polygons remain missing and detailed reasons are written to Console. Off by default to preserve strict import behavior. Click Apply to reimport.",
                         MessageType.Info);
                     EditorGUILayout.HelpBox("Normals are recalculated. If the model appears inside-out, toggle Reverse Triangle Winding.", MessageType.Info);
+                    EditorGUILayout.Space();
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("preserveZeroUvWords"),
+                        new GUIContent("Preserve Zero UV Words (Experimental)"));
+                    EditorGUILayout.HelpBox(
+                        "Legacy EMD parsing skips zero-valued 32-bit words after each UV block. " +
+                        "These zeros can be legitimate UV coordinates. Enable only for A/B comparison: " +
+                        "if the source contains real padding between blocks, this option can worsen " +
+                        "the next mesh's UVs. Geometry and material selection are unchanged.",
+                        MessageType.Warning);
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("uvChannelOverrides"),
+                        new GUIContent("Mesh Source UV Channel Overrides"), true);
+                    EditorGUILayout.HelpBox(
+                        "Optional overrides: enter an exact imported mesh name (for example obj_00_0) " +
+                        "and source UV channel 0..6. The read-only UV audit lists available channels. " +
+                        "UV0 remains unchanged when no override exists. Original source UV channels " +
+                        "also appear in Unity UV1..UV6 for inspection.",
+                        MessageType.Info);
                     if (GUILayout.Button("Diagnose Stage EMD Buffers (Read-only)"))
                     {
                         if (selectedEmd != null)
                             EmdStageBinaryDiagnostics.DiagnosePath(selectedEmd.assetPath);
+                    }
+                    if (GUILayout.Button("Diagnose EMD UV Mapping (Read-only)"))
+                    {
+                        if (selectedEmd != null)
+                            EmdUvMappingDiagnostics.DiagnosePath(selectedEmd.assetPath);
                     }
                     break;
                 case 1:
