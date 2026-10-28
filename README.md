@@ -167,6 +167,18 @@ Open the source `.emd` in Project and click the **Materials** tab, then **Diagno
 
 Texture loading remains within the EMD's local `textures/` folder or model folder and now uses a deterministic order. If a local DDS is not importable as a Unity `Texture2D`, a same-basename loadable PNG/TGA can be tried without renaming materials. An auxiliary map with no explicit `_CO` counterpart is not automatically changed. This feature does not alter the original EMD/DDS bytes.
 
+### Experimental EMD UV mapping audit (v0.5.8 branch)
+
+When the correct DDS texture is assigned but the image looks scrambled or randomly mapped on some meshes, examine **UV coordinates** rather than changing material bindings again. The EMD format can contain several UV pairs per vertex. Older import logic chose source channel 0 for 8–16-byte records or channel 3 for 20–28-byte records, following the available MaxScript reference. That choice may not match every game's shader input.
+
+Select the problem .emd in the **Project** window, open **Model**, then click **Diagnose EMD UV Mapping (Read-only)**. The same action is at **Tools > EMD2Unity > Diagnose Selected EMD UV Mapping**. The report is copied to the clipboard and Console. It lists per-mesh UV stride, source UV channels, source block start offset, number of zero bytes skipped after a UV block, two competing UV cursor-advance interpretations, raw UV sample/ranges, and imported Unity UV0. Compare a visibly good mesh against a scrambled mesh; being outside 0..1 is not by itself a defect because repeated textures often tile.
+
+For an individual scrambled mesh, use **Mesh Source UV Channel Overrides** in Model: add an element with exact **Mesh Name** from the report (such as `obj_00_0`) and **Source Channel** (0, 1, 2, 3, etc., only when listed). Click **Apply**. No rule means unchanged legacy UV0. Each original source UV set is additionally copied to Unity UV1 onward to help inspect different channels.
+
+If the report shows nonzero **zero bytes skipped** after a UV block, test **Preserve Zero UV Words (Experimental)** and click **Apply**, then compare the same surfaces. Some EMDs genuinely contain padding between UV blocks; enabling the option can shift their UVs incorrectly. Leave it **off** unless the original game reference and visual inspection support the change. Restoring the default and removing overrides returns to legacy mapping. Both settings affect imported Unity meshes only; the source EMD, EMAT and textures are never modified.
+
+**Validation needed:** A parser's UV statistics do not prove which UV set a PS3 shader used. This diagnostic can isolate corrupted stream offsets versus an alternate UV channel, but correct layered STG rendering may additionally require an EMAT shader/sampler analysis. Live Unity compilation and in-game comparison are pending.
+
 ### Ambiguous STG31 material texture references (v0.5.7)
 
 The source-binding report for `Assets/KRBWS/stg/STG31/model/AREA00.emd` confirms eight materials. Several have *two* explicit `_CO` references, so v0.5.6 left their original `_LI` diffuse assignments untouched rather than guessing. In v0.5.7, **Prefer Referenced _CO for Diffuse** uses a narrow exception: when the material name ends in a recognized auxiliary suffix, and **one of its own explicitly referenced** colours is the matching stem (e.g. `stg31_ground02_BL` references `stg31_ground02_CO`), select that `_CO` for Unity Standard Base Map if the local DDS/PNG is importable as a Texture2D. Otherwise leave it untouched.
