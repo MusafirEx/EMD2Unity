@@ -16,7 +16,15 @@ using UnityEngine.Rendering;
 
 namespace MusafirEx.EMD2Unity
 {
-    [ScriptedImporter(12, "emd")]
+    [Serializable]
+    internal sealed class EmdUvChannelOverride
+    {
+        // Exact mesh name from the UV diagnostic (for example obj_00_0).
+        public string meshName = "";
+        [Range(0, 6)] public int sourceChannel;
+    }
+
+    [ScriptedImporter(13, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         [Header("Model")]
@@ -25,6 +33,11 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private bool reverseWinding = false;
         [SerializeField] private bool useVertexColors = true;
         [SerializeField] private bool recoverSupportedPolygons = false;
+        // Off retains the original MaxScript-compatible zero-padding scan.
+        // On preserves leading zero words in the following UV block.
+        [SerializeField] private bool preserveZeroUvWords = false;
+        [SerializeField] private List<EmdUvChannelOverride> uvChannelOverrides =
+            new List<EmdUvChannelOverride>();
         [Header("Rig")]
         [SerializeField] private bool importSkeleton = true;
         [SerializeField] private bool repairDegenerateBoneAxes = true;
@@ -40,7 +53,7 @@ namespace MusafirEx.EMD2Unity
             try
             {
                 byte[] data = File.ReadAllBytes(ctx.assetPath);
-                var document = EmdParser.Parse(data, recoverSupportedPolygons);
+                var document = EmdParser.Parse(data, recoverSupportedPolygons, preserveZeroUvWords);
                 CreateUnityAssets(ctx, document);
                 foreach (string warning in document.ImportWarnings)
                     ctx.LogImportWarning(warning);
@@ -411,10 +424,37 @@ namespace MusafirEx.EMD2Unity
                     for (int t = 0; t < triangles.Length; t += 3)
                         { int temp = triangles[t]; triangles[t] = triangles[t + 2]; triangles[t + 2] = temp; }
                 mesh.triangles = triangles;
-                if (info.UV.Length == verts.Length) mesh.uv = info.UV;
+                Vector2[] chosenUv = info.UV;
+                string meshName = info.Name + "_" + i;
+                for (int ruleIndex = 0; ruleIndex < uvChannelOverrides.Count; ruleIndex++)
+                {
+                    EmdUvChannelOverride rule = uvChannelOverrides[ruleIndex];
+                    if (rule == null || string.IsNullOrWhiteSpace(rule.meshName) ||
+                        (!rule.meshName.Equals(meshName, StringComparison.OrdinalIgnoreCase) &&
+                         !rule.meshName.Equals(info.Name, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+                    if (info.SourceUvChannels != null && rule.sourceChannel >= 0 &&
+                        rule.sourceChannel < info.SourceUvChannels.Length)
+                        chosenUv = info.SourceUvChannels[rule.sourceChannel];
+                    else
+                        ctx.LogImportWarning("EMD UV override for '" + meshName +
+                            "' requests unavailable source channel " + rule.sourceChannel +
+                            ". Available: 0.." + (info.SourceUvChannels == null ?
+                                -1 : info.SourceUvChannels.Length - 1) +
+                            ". Keeping original UV0.");
+                    break;
+                }
+                if (chosenUv != null && chosenUv.Length == verts.Length) mesh.uv = chosenUv;
+                // Preserve source channels in UV1..UV6; UV0 is the
+                // legacy-selected (or explicitly overridden) main texture UV.
+                if (info.SourceUvChannels != null)
+                    for (int uvChannel = 0; uvChannel < info.SourceUvChannels.Length && uvChannel < 7; uvChannel++)
+                        if (info.SourceUvChannels[uvChannel] != null &&
+                            info.SourceUvChannels[uvChannel].Length == verts.Length)
+                            mesh.SetUVs(uvChannel + 1, info.SourceUvChannels[uvChannel]);
                 if (useVertexColors && info.Colors.Length == verts.Length) mesh.colors32 = info.Colors;
                 mesh.RecalculateNormals();
-                if (info.UV.Length == verts.Length) mesh.RecalculateTangents();
+                if (chosenUv != null && chosenUv.Length == verts.Length) mesh.RecalculateTangents();
                 mesh.RecalculateBounds();
                 ctx.AddObjectToAsset("mesh_" + i, mesh);
 
@@ -658,6 +698,10 @@ namespace MusafirEx.EMD2Unity
         public Vector3[] Vertices;
         public int[] Triangles;
         public Vector2[] UV;
+        public Vector2[][] SourceUvChannels;
+        public int UvStride;
+        public int UvStartOffset;
+        public int UvSkippedZeroBytes;
         public Color32[] Colors;
         public EmdWeight[] Weights;
     }
@@ -756,7 +800,8 @@ namespace MusafirEx.EMD2Unity
             if (count < 0 || count > max) throw new InvalidDataException("Invalid " + label + " count: " + count);
         }
 
-        public static EmdDocument Parse(byte[] data, bool recoverSupportedPolygons = false)
+        public static EmdDocument Parse(byte[] data, bool recoverSupportedPolygons = false,
+            bool preserveZeroUvWords = false)
         {
             if (data.Length < 0x68) throw new InvalidDataException("EMD header is too short.");
             var r = new BeReader(data);
@@ -1062,8 +1107,13 @@ namespace MusafirEx.EMD2Unity
                         triangles[f * 3 + 1] = b;
                         triangles[f * 3 + 2] = a;
                     }
+                    int sourceUvStart = uvOffset;
                     r.Seek(uvOffset);
                     var uvs = new Vector2[pointCount];
+                    // Source UVs are retained for comparing every channel.
+                    var sourceUvChannels = new Vector2[uvSize - 1][];
+                    for (int channel = 0; channel < sourceUvChannels.Length; channel++)
+                        sourceUvChannels[channel] = new Vector2[pointCount];
                     var colors = new Color32[pointCount];
                     for (int v = 0; v < pointCount; ++v)
                     {
@@ -1079,12 +1129,19 @@ namespace MusafirEx.EMD2Unity
                                 // its subsequent multiply-by-two restores the normal UV.
                                 float u = r.Half();
                                 float t = 1f - r.Half();
-                                if (slot == 0) uvs[v] = new Vector2(u, t);
+                                Vector2 coordinate = new Vector2(u, t);
+                                sourceUvChannels[slot][v] = coordinate;
+                                if (slot == 0) uvs[v] = coordinate;
                             }
                         }
                         else
                         {
-                            for (int slot = 0; slot < 3; ++slot) { r.Half(); r.Half(); }
+                            for (int slot = 0; slot < 3; ++slot)
+                            {
+                                float u = r.Half();
+                                float t = 1f - r.Half();
+                                sourceUvChannels[slot][v] = new Vector2(u, t);
+                            }
                             byte a = r.U8(), red = r.U8(), green = r.U8(), blue = r.U8();
                             colors[v] = new Color32(red, green, blue, a);
                             for (int slot = 0; slot < uvSize - 4; ++slot)
@@ -1093,23 +1150,28 @@ namespace MusafirEx.EMD2Unity
                                 // its subsequent multiply-by-two restores the normal UV.
                                 float u = r.Half();
                                 float t = 1f - r.Half();
-                                if (slot == 0) uvs[v] = new Vector2(u, t);
+                                Vector2 coordinate = new Vector2(u, t);
+                                sourceUvChannels[slot + 3][v] = coordinate;
+                                if (slot == 0) uvs[v] = coordinate;
                             }
                         }
                     }
                     // Some files have no subsequent UV chunk after the final mesh.
                     // Advance when possible, otherwise leave the cursor at EOF.
-                    if (stage200Headers != null && stage200Headers.Count > 0)
+                    int uvBlockEnd = r.Position;
+                    if ((stage200Headers != null && stage200Headers.Count > 0) ||
+                        preserveZeroUvWords)
                     {
-                        // 0x200 static-container UV blocks follow one another.
-                        // Do not skip zero words that might be real UV values.
-                        uvOffset = r.Position;
+                        // Type 0x200 static-container UV blocks are contiguous.
+                        // Opt-in also preserves zero words between other blocks.
+                        uvOffset = uvBlockEnd;
                     }
                     else
                     {
                         try { uvOffset = r.SkipZeroWords(); }
                         catch (InvalidDataException) { uvOffset = r.Position; }
                     }
+                    int skippedZeroBytes = uvOffset - uvBlockEnd;
 
                     EmdWeight[] weights = new EmdWeight[doc.Bones.Count > 0 ? pointCount : 0];
                     int nextGroupPosition = r.Position;
@@ -1139,7 +1201,10 @@ namespace MusafirEx.EMD2Unity
                         Name = name + (groupCount > 1 ? "_" + g : ""),
                         MaterialIndex = matIndex,
                         Vertices = vertices, Triangles = triangles,
-                        UV = uvs, Colors = colors, Weights = weights
+                        UV = uvs, SourceUvChannels = sourceUvChannels,
+                        UvStride = uvStride, UvStartOffset = sourceUvStart,
+                        UvSkippedZeroBytes = skippedZeroBytes,
+                        Colors = colors, Weights = weights
                     });
                     r.Seek(nextGroupPosition);
                 }
