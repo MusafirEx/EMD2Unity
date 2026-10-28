@@ -83,6 +83,66 @@ namespace MusafirEx.EMD2Unity
                 (values.Length > 1 ? " second=" + FormatVector(values[1]) : "");
         }
 
+        // Only flags channels worth testing. Finite, bounded coordinates and
+        // nonzero variation do NOT prove which PS3 sampler uses a channel.
+        private static string CandidateChannels(EmdGroup group)
+        {
+            if (group.SourceUvChannels == null) return "(none)";
+            var candidates = new List<string>();
+            for (int channel = 0; channel < group.SourceUvChannels.Length; channel++)
+            {
+                Vector2[] values = group.SourceUvChannels[channel];
+                if (values == null || values.Length < 2) continue;
+                float minU = float.PositiveInfinity, maxU = float.NegativeInfinity;
+                float minV = float.PositiveInfinity, maxV = float.NegativeInfinity;
+                int invalid = 0, extreme = 0;
+                foreach (Vector2 uv in values)
+                {
+                    if (float.IsNaN(uv.x) || float.IsInfinity(uv.x) ||
+                        float.IsNaN(uv.y) || float.IsInfinity(uv.y))
+                    {
+                        invalid++;
+                        continue;
+                    }
+                    if (Mathf.Abs(uv.x) > 128f || Mathf.Abs(uv.y) > 128f)
+                        extreme++;
+                    minU = Mathf.Min(minU, uv.x);
+                    maxU = Mathf.Max(maxU, uv.x);
+                    minV = Mathf.Min(minV, uv.y);
+                    maxV = Mathf.Max(maxV, uv.y);
+                }
+                if (invalid == 0 && extreme == 0 &&
+                    (maxU - minU > 1e-4f || maxV - minV > 1e-4f))
+                    candidates.Add(channel.ToString());
+            }
+            return candidates.Count == 0 ? "(none with finite, bounded and variable UVs)" :
+                string.Join(", ", candidates.ToArray());
+        }
+
+        private static string HexAt(byte[] data, int offset, int maxBytes)
+        {
+            if (offset < 0 || offset >= data.Length) return "(out of bounds)";
+            int count = Math.Min(maxBytes, data.Length - offset);
+            var builder = new StringBuilder(count * 3);
+            for (int i = 0; i < count; i++)
+            {
+                if (i > 0) builder.Append(' ');
+                builder.Append(data[offset + i].ToString("X2"));
+            }
+            return builder.ToString();
+        }
+
+        private static bool HasUnusableDefaultUv(EmdGroup group)
+        {
+            if (group.UV == null || group.UV.Length == 0) return true;
+            foreach (Vector2 value in group.UV)
+                if (float.IsNaN(value.x) || float.IsNaN(value.y) ||
+                    float.IsInfinity(value.x) || float.IsInfinity(value.y) ||
+                    Mathf.Abs(value.x) > 1024f || Mathf.Abs(value.y) > 1024f)
+                    return true;
+            return false;
+        }
+
         private static Dictionary<string, Mesh> ImportedMeshes(GameObject root)
         {
             var result = new Dictionary<string, Mesh>(StringComparer.Ordinal);
@@ -182,6 +242,17 @@ namespace MusafirEx.EMD2Unity
                         report.AppendLine("  Source UV " + j +
                             (j == primary ? " [legacy default]" : "") +
                             ": " + Statistics(g.SourceUvChannels[j]));
+                if (HasUnusableDefaultUv(g))
+                {
+                    report.AppendLine("  UV0 DATA WARNING: default source channel contains " +
+                        "nonfinite or extreme (>1024) coordinates. This is not a " +
+                        "texture-binding or shader proof.");
+                    report.AppendLine("  Channels worth visual A/B testing: " + CandidateChannels(g));
+                    report.AppendLine("  First source UV record (hex, bounded): " +
+                        HexAt(bytes, g.UvStartOffset, Math.Min(48, g.UvStride * 2)));
+                    report.AppendLine("  An invalid UV0 may also mean a bad stream offset/vertex " +
+                        "record layout; do NOT permanently remap solely from this report.");
+                }
                 Mesh unityMesh;
                 if (meshes.TryGetValue(meshName, out unityMesh))
                     report.AppendLine("  Imported Unity UV0: " + Statistics(unityMesh.uv));
@@ -192,6 +263,9 @@ namespace MusafirEx.EMD2Unity
                 report.AppendLine("Limited report to first " + groups +
                     " groups of " + chosen.Groups.Count + ".");
             report.AppendLine("");
+            report.AppendLine("If legacy and preserve-zero modes have the same UV starts " +
+                "for every mesh, changing Preserve Zero UV Words cannot fix those meshes. " +
+                "Skipped zeros after the final group do not affect any reported group.");
             report.AppendLine("Interpretation: source UV channels and offset differences are " +
                 "diagnostic evidence only. Tiled UVs outside 0..1 are normal in games. " +
                 "Compare a visibly good mesh with a distorted mesh and the original game. " +
