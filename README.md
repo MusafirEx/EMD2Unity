@@ -151,6 +151,12 @@ The fixer **does not** reinterpret unknown pixel formats, cubemaps, volume/array
 
 This is an **explicit manual action**, not a background asset postprocessor. There is no automatic destructive conversion on project load. Always test on a separate project copy first. The sample `stg01_jimen01_BL.dds` was checked offline for bit-identical top-level image data; Unity acceptance of its fixed DDS needs Editor testing.
 
+### Existing STG DDS backup collisions (v0.5.5)
+
+If Scan reports **21 repairable DDS** but Apply reports `Repaired 0 / Skipped 21` with `Existing backup will not be overwritten`, the issue is backup-name collision, not a new DDS codec. Upgrade to v0.5.5 and run **Tools > EMD2Unity > STG DDS Batch Repair > Scan STG DDS > Apply Safe Fixes (Backups)**. Each source is backed up outside Assets before replacement. Existing backups are never overwritten; a numbered name such as `.backup-0001.dds` is chosen automatically when necessary. The Console logs the new backup location. Scan again to confirm the number of repairable partial mipmap files reaches zero.
+
+**Important:** `No mip fix needed` does not mean Unity has accepted every DDS. Files already stored as a single mip level, such as `stg01_enkei01_CO.dds`, may still need a separate investigation if Unity reports `Unsupported ...dds file`.
+
 ## Status
 
 | Component | Status |
