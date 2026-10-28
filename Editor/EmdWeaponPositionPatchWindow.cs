@@ -103,8 +103,16 @@ namespace MusafirEx.EMD2Unity
                     string path = AssetDatabase.GenerateUniqueAssetPath(
                         uniqueFolder + "/" + child.name + "_Editable.asset");
                     AssetDatabase.CreateAsset(duplicate, path);
-                    if (renderer != null) renderer.sharedMesh = duplicate;
-                    else filter.sharedMesh = duplicate;
+                    if (renderer != null)
+                    {
+                        renderer.sharedMesh = duplicate;
+                        PrefabUtility.RecordPrefabInstancePropertyModifications(renderer);
+                    }
+                    else
+                    {
+                        filter.sharedMesh = duplicate;
+                        PrefabUtility.RecordPrefabInstancePropertyModifications(filter);
+                    }
                     clones++;
                 }
                 if (clones == 0)
