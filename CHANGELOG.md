@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.6 — identify and correct EMD diffuse texture mapping (STG31 AREA00)
+
+- Investigated the selected `Assets/KRBWS/stg/STG31/model/AREA00.emd`. The imported asset has eight mesh objects and texture dependencies including `stg31_jimen01_LI`, `Aaspyuka01_CO`, `stg31_jimenAll_LI`, and `stg31_soukojimen01_LI`. Dependency paths alone do not prove which mesh has an incorrect texture.
+- Fixed importer material metadata to preserve **every EMD submaterial name**, not only the first texture reference.
+- Added **Prefer Unique _CO for Diffuse** (enabled by default). If the first EMD submaterial has an auxiliary suffix (`_LI`, `_BL`, `_SP`, `_NO`), the importer uses a `_CO` candidate only when exactly one distinct candidate is explicitly named by that material's submaterials or companion EMAT. It warns and keeps the original selection when multiple candidates exist. This is an evidence-based heuristic, not a confirmed PS3 material/shader reconstruction; disable it to preserve original behavior.
+- Local texture lookup now has deterministic directory/extension ordering; an unreadable `.dds` can fall back to a readable `.png`/`.tga` with exactly the same base name, without selecting nearby stages or guessed names.
+- Added **Tools > EMD2Unity > Diagnose Selected EMD Texture Bindings** and a Materials-tab button: a read-only clipboard/Console report maps source material index, source submaterial names, matching EMAT, unique/ambiguous `_CO` references, and actual Unity mesh material/diffuse texture paths.
+- EMD ScriptedImporter revision 11 triggers reimport. The asset's visual correctness, parser material-index interpretation, and Unity C# compilation require validation on the selected AREA model. No EMD binary or DDS source is modified by these changes.
+
+
 ## 0.5.5 — STG DDS batch-repair backup collision fix
 
 - Confirmed from the user's live Unity log: a batch run reported **Repaired 0, skipped/failed 21** because all 21 still-fixable DDS files already had backups at the default destination. The files had not been changed in that attempt.
