@@ -156,12 +156,12 @@ namespace MusafirEx.EMD2Unity
                     }
                     if (result.declaredMips <= 1)
                     {
-                        result.detail = "Already single-level DDS; no change";
+                        result.detail = "Already single-level DDS; no change (Unity import not verified)";
                         return result;
                     }
                     if (result.declaredMips >= result.fullMips)
                     {
-                        result.detail = "Complete mip chain; no change";
+                        result.detail = "Complete mip chain; no change (Unity import not verified)";
                         return result;
                     }
                     result.canRepair = true;
@@ -213,7 +213,7 @@ namespace MusafirEx.EMD2Unity
             }
             scanned = true;
             lastAction = "Scanned " + results.Count + " DDS files: " + fixable +
-                " verified partial mipmaps, " + unchanged + " already valid/complete, " +
+                " verified partial mipmaps, " + unchanged + " with no partial-chain fix needed, " +
                 unsupported + " require separate investigation. No files modified.";
             Debug.Log("EMD2Unity STG DDS Scan: " + lastAction);
         }
@@ -411,7 +411,7 @@ namespace MusafirEx.EMD2Unity
             EditorGUILayout.HelpBox(lastAction, MessageType.Info);
             if (!scanned) return;
             EditorGUILayout.LabelField(
-                "Repairable: " + fixable + "  |  Already valid: " + unchanged +
+                "Repairable: " + fixable + "  |  No mip fix needed: " + unchanged +
                 "  |  Unsupported/ambiguous: " + unsupported +
                 "  |  Total: " + results.Count, EditorStyles.boldLabel);
             scroll = EditorGUILayout.BeginScrollView(scroll);
