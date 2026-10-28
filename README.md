@@ -129,6 +129,14 @@ Select a `.pemt` asset and its numerical Motion ID in the Inspector, then click 
 
 The Preview window also has **Allow Partial Preview (skip unsupported track markers)**. It is OFF by default. When enabled, unknown tracks are omitted *only in the temporary, isolated preview*, and a visible warning plus Console details identify every skipped track. Missing channels remain in the imported pose; animations may appear incomplete. If no supported transform track matches the EMD skeleton, preview still fails with a clear message. **Export Selected** and **Export All** are always strict and never write incomplete clips by skipping unsupported track markers.
 
+### Investigating PEMT marker 0x02040022 (v0.5.3)
+
+The read-only DRV02/0000.pemt report for Motion ID 0x100 (256) found unsupported track #56 for candidate joint j320. Its 8-byte value payload decodes as float16 `(0, 1, 1, 0)`. This suggests, but **does not establish**, XYZ scale plus zero padding. Do not rename numeric Motion IDs.
+
+To investigate safely, open **Tools > EMD2Unity > PEMT Animation Preview**, select the PEMT, matching EMD and Motion ID **0x100**, then enable **Experimental Scale 0x02040022 (Preview ONLY)** before clicking **Build / Refresh Preview**. This option is OFF by default. The experimental decoder requires finite XYZ, zero fourth half and bounded magnitude; it applies XYZ as multipliers of the bone's imported local scale. The first sample has X=0, so the associated bone may collapse along X in preview. Check whether that matches the game pose. A persistent warning and Console track log indicate every unverified channel. The separate **Allow Partial Preview** option can skip other unsupported markers, when explicitly enabled.
+
+The **Copy Motion Track Report** action also displays candidate values and timestamps for up to four samples of each 0x22 track. Export Selected and Export All remain strict and will not create speculative .anim clips. Established position/rotation tracks are untouched.
+
 ## Status
 
 | Component | Status |
