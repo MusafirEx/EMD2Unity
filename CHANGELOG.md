@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.2 — PEMT unsupported-track diagnostics and explicit partial preview
+
+- Added a read-only **Copy Motion Track Report (hex / offsets)** action in the PEMT Inspector and Animation Preview. Reports the selected asset, unchanged numeric Motion ID, each track index/marker/info words, candidate high/low parts, absolute and relative offsets, and bounded raw data at both pointer locations.
+- Decoder failures now include exact source path, numeric Motion ID, track index, marker, info, and offsets, so errors on individual animations can be distinguished without guessing the meaning of unknown markers such as 0x02040022.
+- Added **Allow Partial Preview (skip unsupported track markers)** to the isolated Animation Preview window, OFF by default. When enabled, the transient preview omits unsupported tracks only, displays a persistent PARTIAL PREVIEW warning and lists skipped tracks in the Unity Console. Supported position/rotation tracks and validation errors retain existing strict decoding.
+- **Export Selected and Export All stay strict**: they will not silently produce incomplete .anim assets. A partial preview is not a complete animation or validated alternative decoder.
+- No invented channel mapping for 0x02040022; raw payload must be inspected to establish encoding. No changes to EMD, Stage EMD, rig repairs, SEQ or CCM. Unity compilation and user Motion ID verification pending.
+
+
 ## 0.5.1 — diagnose and synthesize missing bone axes
 
 - Added **Repair Missing Bone Axes (Experimental)** to the EMD **Rig** inspector (enabled by default, switch off for strict import).
