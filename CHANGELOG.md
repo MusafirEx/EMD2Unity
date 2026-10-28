@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.5 — STG DDS batch-repair backup collision fix
+
+- Confirmed from the user's live Unity log: a batch run reported **Repaired 0, skipped/failed 21** because all 21 still-fixable DDS files already had backups at the default destination. The files had not been changed in that attempt.
+- Batch Repair now **never overwrites older backups**: it reserves a new original or `.backup-0001.dds`, `.backup-0002.dds`, etc. with `FileMode.CreateNew`, saves the DDS source before repair, and records each backup filename in Console.
+- Uses a unique temporary file per repair and retains source paths, source `.meta` files, top-level compressed image blocks, and existing backup content.
+- Clarifies audit labels: `Already single-level` or `Complete mip chain` means no partial-mipmap fix is needed; it **does not guarantee that Unity accepts the texture**. The unrelated unsupported-format DDS warning still needs separate validation.
+- Apply remains opt-in and revalidates each candidate. Run **Scan STG DDS** again after Apply; a successful fix of the 21 remaining files should make `Repairable = 0`.
+- Model, PEMT animation, and material-import functionality is unchanged. Unity Editor compilation/import results require a live Editor test.
+
+
 ## 0.5.4 — STG DDS batch audit and conservative partial-mipmap repair
 
 - Added **Tools > EMD2Unity > STG DDS Batch Repair** to scan all DDS files recursively under `Assets/KRBWS/stg`, with a read-only inventory and optional CSV audit.
