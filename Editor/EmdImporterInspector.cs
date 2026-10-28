@@ -69,6 +69,16 @@ namespace MusafirEx.EMD2Unity
                         MessageType.Info);
                     EditorGUILayout.HelpBox("Normals are recalculated. If the model appears inside-out, toggle Reverse Triangle Winding.", MessageType.Info);
                     EditorGUILayout.Space();
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("alignUvBlocksTo16"),
+                        new GUIContent("Align UV Blocks to 16 Bytes (Experimental)"));
+                    EditorGUILayout.HelpBox(
+                        "STG30/AREA00 has 24-byte UV records with 16-byte block alignment. " +
+                        "Enable this to test correcting shifted UV and vertex-color records on " +
+                        "later meshes without changing materials or mesh geometry. " +
+                        "Off by default: other EMD layouts are not yet confirmed. " +
+                        "If enabled, this mode takes precedence over Preserve Zero UV Words. " +
+                        "Clear prior UV channel overrides and click Apply to test.",
+                        MessageType.Warning);
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("preserveZeroUvWords"),
                         new GUIContent("Preserve Zero UV Words (Experimental)"));
                     EditorGUILayout.HelpBox(
