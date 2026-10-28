@@ -167,6 +167,24 @@ Open the source `.emd` in Project and click the **Materials** tab, then **Diagno
 
 Texture loading remains within the EMD's local `textures/` folder or model folder and now uses a deterministic order. If a local DDS is not importable as a Unity `Texture2D`, a same-basename loadable PNG/TGA can be tried without renaming materials. An auxiliary map with no explicit `_CO` counterpart is not automatically changed. This feature does not alter the original EMD/DDS bytes.
 
+### STG30/AREA00: 16-byte UV-block alignment candidate (experimental)
+
+A reported STG30 `AREA00.emd` UV audit showed five meshes with **24-byte UV vertex records**, but the third through fifth meshes had distorted UVs. Comparing the reported raw hex and vertex colors revealed that UV blocks appear to start on **absolute 16-byte file boundaries**, with nonzero padding possible between blocks:
+
+| Mesh | Old sequential UV start | 16-byte aligned candidate |
+| --- | --- | --- |
+| `obj000_0` | `0x126B0` | `0x126B0` |
+| `obj001_0_1` | `0x166A0` | `0x166A0` |
+| `obj001_1_2` | `0x24908` | `0x24910` |
+| `obj002_3` | `0x250D0` | `0x250E0` |
+| `obj003_4` | `0x28580` | `0x28590` |
+
+For example, on `obj001_1_2` the apparent vertex color shifts from corrupted bytes to `E8 E8 E8 FF` and the first primary UV becomes `(-4.875, 10.023)` when the record begins at the 16-byte boundary. Other affected groups show the same pattern. This supports an **alignment error**, not an alternative texture/UV channel.
+
+To test: select the affected `.emd` in Unity's Project panel, open **Model**, set **Mesh Source UV Channel Overrides** size to zero, enable **Align UV Blocks to 16 Bytes (Experimental)**, leave other UV experimental settings disabled, and **Apply**. Run **Diagnose EMD UV Mapping (Read-only)** again. It now prints decoded results for the 16-byte alignment alongside legacy and preserve-zero interpretations. Verify visuals on all five meshes and unrelated characters/stages before using as a default.
+
+**This is an experimental opt-in** until actual Unity rendering and game-original comparison confirm the format rule. No source EMD, EMAT or DDS bytes are edited.
+
 ### Experimental EMD UV mapping audit (v0.5.8 branch)
 
 When the correct DDS texture is assigned but the image looks scrambled or randomly mapped on some meshes, examine **UV coordinates** rather than changing material bindings again. The EMD format can contain several UV pairs per vertex. Older import logic chose source channel 0 for 8–16-byte records or channel 3 for 20–28-byte records, following the available MaxScript reference. That choice may not match every game's shader input.
