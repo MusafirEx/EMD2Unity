@@ -169,6 +169,14 @@ Texture loading remains within the EMD's local `textures/` folder or model folde
 
 ### STG30/AREA00: 16-byte UV-block alignment candidate (experimental)
 
+### STG31/AREA02: UV alignment confirmed in audit; check RGBA vertex colors
+
+A subsequent read-only audit of `STG31/model/AREA02.emd`, with **Align UV Blocks to 16 Bytes** enabled, decoded **26/26 meshes, 20,465 vertices and zero invalid/extreme UV0 coordinates**. Original legacy UV starts were shifted by up to 64 bytes by the final mesh. The user's audit does **not** independently prove correct visual mapping, but supports the 16-byte UV-stream padding hypothesis.
+
+That audit also exposed a **separate packed vertex color ordering issue**: all 26 first-vertex samples ended in `FF`. For example `4C 4C 4C FF` is likely `RGBA(76,76,76,255)`, while the current MaxScript-compatible ARGB parser produces `RGBA(76,76,255,76)` (blue tint and reduced alpha). In **Model**, enable **Stage Vertex Colors Are RGBA (Experimental)** **for this EMD only** and click **Apply**. Keep **Align UV Blocks to 16 Bytes** on and **Mesh Source UV Channel Overrides** empty. The refreshed read-only UV audit shows the first vertex RGBA/ARGB interpretations for verification. This option changes generated vertex colors only, not textures, materials, geometry, or UVs. Keep disabled for other EMDs until source format is verified.
+
+
+
 A reported STG30 `AREA00.emd` UV audit showed five meshes with **24-byte UV vertex records**, but the third through fifth meshes had distorted UVs. Comparing the reported raw hex and vertex colors revealed that UV blocks appear to start on **absolute 16-byte file boundaries**, with nonzero padding possible between blocks:
 
 | Mesh | Old sequential UV start | 16-byte aligned candidate |
