@@ -24,7 +24,7 @@ namespace MusafirEx.EMD2Unity
         [Range(0, 6)] public int sourceChannel;
     }
 
-    [ScriptedImporter(13, "emd")]
+    [ScriptedImporter(14, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         [Header("Model")]
@@ -36,6 +36,11 @@ namespace MusafirEx.EMD2Unity
         // Off retains the original MaxScript-compatible zero-padding scan.
         // On preserves leading zero words in the following UV block.
         [SerializeField] private bool preserveZeroUvWords = false;
+        // Some stage EMD UV streams pad individual vertex-coordinate blocks
+        // to an absolute 16-byte file boundary. The padding can contain
+        // nonzero bytes, so SkipZeroWords cannot reliably cross it.
+        // Opt-in per EMD until validated against all source layouts.
+        [SerializeField] private bool alignUvBlocksTo16 = false;
         [SerializeField] private List<EmdUvChannelOverride> uvChannelOverrides =
             new List<EmdUvChannelOverride>();
         [Header("Rig")]
@@ -53,7 +58,8 @@ namespace MusafirEx.EMD2Unity
             try
             {
                 byte[] data = File.ReadAllBytes(ctx.assetPath);
-                var document = EmdParser.Parse(data, recoverSupportedPolygons, preserveZeroUvWords);
+                var document = EmdParser.Parse(data, recoverSupportedPolygons, preserveZeroUvWords,
+                    alignUvBlocksTo16);
                 CreateUnityAssets(ctx, document);
                 foreach (string warning in document.ImportWarnings)
                     ctx.LogImportWarning(warning);
@@ -805,7 +811,7 @@ namespace MusafirEx.EMD2Unity
         }
 
         public static EmdDocument Parse(byte[] data, bool recoverSupportedPolygons = false,
-            bool preserveZeroUvWords = false)
+            bool preserveZeroUvWords = false, bool alignUvBlocksTo16 = false)
         {
             if (data.Length < 0x68) throw new InvalidDataException("EMD header is too short.");
             var r = new BeReader(data);
@@ -1165,8 +1171,25 @@ namespace MusafirEx.EMD2Unity
                     // Some files have no subsequent UV chunk after the final mesh.
                     // Advance when possible, otherwise leave the cursor at EOF.
                     int uvBlockEnd = r.Position;
-                    if ((stage200Headers != null && stage200Headers.Count > 0) ||
-                        preserveZeroUvWords)
+                    if (alignUvBlocksTo16)
+                    {
+                        // STG30/AREA00 forensic evidence: 24-byte UV records
+                        // start at 0x126B0, 0x166A0, 0x24910, 0x250E0,
+                        // 0x28590. Earlier sequential positions were offset by
+                        // +8/+16 bytes because individual UV blocks were
+                        // rounded up to the next absolute 16-byte boundary.
+                        // Padding is not necessarily all zero.
+                        long alignedEnd = ((long)uvBlockEnd + 15L) & ~15L;
+                        if (alignedEnd > r.Length)
+                            throw new InvalidDataException(
+                                "Aligned UV block end exceeds EMD file length in " + name +
+                                ": raw=0x" + uvBlockEnd.ToString("X") +
+                                ", aligned=0x" + alignedEnd.ToString("X") +
+                                ", file=0x" + r.Length.ToString("X"));
+                        uvOffset = (int)alignedEnd;
+                    }
+                    else if ((stage200Headers != null && stage200Headers.Count > 0) ||
+                             preserveZeroUvWords)
                     {
                         // Type 0x200 static-container UV blocks are contiguous.
                         // Opt-in also preserves zero words between other blocks.
