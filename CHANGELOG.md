@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased (experimental branch) — weapon EMD variable-topology rebuild alpha
+
+- Added **Weapon EMD Topology Rebuild (Experimental)** as a separate Unity Editor tool; accepts a different number of vertices and triangle indices on existing `_Wxx.emd` mesh groups with the validated type-`0x0004`, 8-byte UV record and 16-byte stream alignment.
+- Rebuilds index/position/auxiliary/weight buffers and per-group UV streams, recalculates relative group pointers and lengths, polygon sizes/bounding boxes and global UV/bounds header, then invokes the known EMD parser before writing a new output (never overwrite).
+- Carries unknown 12-byte per-vertex attributes and source bone-weight bytes via same-index or closest original vertex, with a configurable transfer-distance guard. Optional half-float UV0 writer; source materials, bone blocks and `EMDI` untouched.
+- Added controlled **Add 1 Test Vertex + 1 Triangle** button for independently cloned `handleblade_0` mesh, providing a safe first test for changed topology.
+- Python binary-layout reference on the original 86,432-byte DRV weapon reproduced the exact original SHA-256 when no geometry changed; a synthetic +1 vertex/+1 triangle rebuild produced 86,448 bytes with valid polygon/stream boundaries. Actual Unity C# execution, game compatibility and the semantics of the auxiliary vertex stream remain unverified. Experimental: do not treat as complete FBX-to-EMD production exporter.
+
 ## Unreleased (experimental branch) — editable source-mesh copy for modified weapon tests
 
 - Diagnosed Unity Editor `handleblade_0: vertex count differs from the original EMD` when an edited FBX is used; the first `Read/Write` rejection was resolved and validation now reaches topology checks.
