@@ -137,6 +137,20 @@ To investigate safely, open **Tools > EMD2Unity > PEMT Animation Preview**, sele
 
 The **Copy Motion Track Report** action also displays candidate values and timestamps for up to four samples of each 0x22 track. Export Selected and Export All remain strict and will not create speculative .anim clips. Established position/rotation tracks are untouched.
 
+### Fixing many STG DDS files (v0.5.4)
+
+For the PS3 STG assets, some DDS textures contain valid **partial mipmap chains** that Unity's DDS importer rejects, e.g. `Invalid mipCount: 4 provided`. Instead of converting individual files manually:
+
+1. Install/update EMD2Unity, then open **Tools > EMD2Unity > STG DDS Batch Repair**.
+2. Click **Scan STG DDS (Read-only)** to analyze all `.dds` files under `Assets/KRBWS/stg` without changing anything. Optionally use **Export Audit CSV** for a full per-texture report.
+3. Inspect the **FIXABLE** versus **Unsupported/ambiguous** counts. Only structurally verified classic single-surface DXT1/DXT3/DXT5 textures with incomplete-but-valid mip chains can be automatically repaired.
+4. Click **Apply Safe Fixes (Backups)** and confirm. Originals are backed up first under **`<Unity project>/EMD2Unity_DDS_Backups/Assets/KRBWS/stg/...`**, outside Unity's `Assets` directory.
+5. The original path and `.meta` GUID stay unchanged. The fixed file retains the **exact same full-resolution BCn/DXT compressed blocks**, drops partial lower mip levels, and updates the DDS mip header. Unity can generate mipmaps on import if desired. Re-scan to verify and inspect textures in the Inspector/Scene.
+
+The fixer **does not** reinterpret unknown pixel formats, cubemaps, volume/array textures, malformed headers, unexpected byte lengths, or textures that already have a complete mip chain. Those are left unchanged and listed for manual binary investigation. For example, an `Unsupported ...dds file` error does *not* prove it has the same cause as an incomplete DXT1 mip chain. Backups are never overwritten.
+
+This is an **explicit manual action**, not a background asset postprocessor. There is no automatic destructive conversion on project load. Always test on a separate project copy first. The sample `stg01_jimen01_BL.dds` was checked offline for bit-identical top-level image data; Unity acceptance of its fixed DDS needs Editor testing.
+
 ## Status
 
 | Component | Status |
