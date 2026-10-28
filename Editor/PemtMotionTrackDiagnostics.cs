@@ -66,6 +66,89 @@ namespace MusafirEx.EMD2Unity
             return hex.ToString();
         }
 
+
+        // Evidence-only candidate interpretation for an unknown channel.
+        // Do not use this to classify 0x02040022 as scale by default.
+        private static uint ReadBigEndian32(byte[] data, long at)
+        {
+            int i = checked((int)at);
+            return ((uint)data[i] << 24) | ((uint)data[i + 1] << 16) |
+                   ((uint)data[i + 2] << 8) | data[i + 3];
+        }
+
+        private static float CandidateHalf(byte[] data, long at)
+        {
+            int i = checked((int)at);
+            uint value = (uint)((data[i] << 8) | data[i + 1]);
+            uint sign = (value & 0x8000u) << 16;
+            uint fraction = value & 0x3FFu;
+            int exponent = (int)((value >> 10) & 31u);
+            uint bits;
+            if (exponent == 0)
+            {
+                if (fraction == 0u) bits = sign;
+                else
+                {
+                    int power = -14;
+                    while ((fraction & 0x400u) == 0u)
+                    {
+                        fraction <<= 1;
+                        power--;
+                    }
+                    bits = sign | ((uint)(power + 127) << 23) |
+                           ((fraction & 0x3FFu) << 13);
+                }
+            }
+            else if (exponent == 31)
+                bits = sign | 0x7F800000u | (fraction << 13);
+            else bits = sign | ((uint)(exponent - 15 + 127) << 23) |
+                        (fraction << 13);
+            return BitConverter.ToSingle(BitConverter.GetBytes(bits), 0);
+        }
+
+        private static void AppendScaleCandidate(StringBuilder report, byte[] data,
+            PemtTrackMetadata track, long blockStart, long blockEnd)
+        {
+            if (!string.Equals(track.markerHex, "0x02040022",
+                StringComparison.OrdinalIgnoreCase)) return;
+            report.AppendLine("  SCALE CANDIDATE ONLY (0x02040022; NOT VERIFIED):");
+            if (string.IsNullOrEmpty(track.infoHex) || track.infoHex.Length < 3 ||
+                !uint.TryParse(track.infoHex.Substring(2),
+                    System.Globalization.NumberStyles.HexNumber,
+                    System.Globalization.CultureInfo.InvariantCulture, out uint info))
+            {
+                report.AppendLine("    Cannot interpret key count from info.");
+                return;
+            }
+            int count = (int)(info & 0xFFFFu);
+            long timeStart = blockStart + track.dataStartRelative;
+            long valueStart = blockStart + track.dataEndRelative;
+            if (count < 1 || track.dataEndRelative <= 0 ||
+                timeStart < blockStart || valueStart < blockStart ||
+                timeStart + count * 4L > blockEnd ||
+                valueStart + count * 8L > blockEnd)
+            {
+                report.AppendLine("    Offsets/count do not fit a 4-byte time + 8-byte value/key layout.");
+                return;
+            }
+            for (int k = 0; k < Math.Min(count, 4); k++)
+            {
+                float time = BitConverter.ToSingle(
+                    BitConverter.GetBytes(ReadBigEndian32(data, timeStart + k * 4L)), 0);
+                long p = valueStart + k * 8L;
+                float x = CandidateHalf(data, p);
+                float y = CandidateHalf(data, p + 2);
+                float z = CandidateHalf(data, p + 4);
+                float padding = CandidateHalf(data, p + 6);
+                report.AppendLine("    Key " + k + ": timeBEFloat=" + time +
+                    " | candidate half XYZ=" + x + ", " + y + ", " + z +
+                    " | fourthHalf=" + padding +
+                    " | zeroPadding=" + (padding == 0f));
+            }
+            report.AppendLine("    Preview may TRY XYZ as local-scale multipliers by opt-in." +
+                " This does not establish the true track semantics.");
+        }
+
         internal static string BuildReport(PemtMotionLibrary library, PemtMotionMetadata motion)
         {
             if (library == null || motion == null)
@@ -81,7 +164,7 @@ namespace MusafirEx.EMD2Unity
                 throw new InvalidDataException("Motion block outside physical PEMT file.");
 
             var report = new StringBuilder();
-            report.AppendLine("EMD2Unity PEMT Motion Track Diagnostics v0.5.2 (read-only)");
+            report.AppendLine("EMD2Unity PEMT Motion Track Diagnostics v0.5.3 (read-only)");
             report.AppendLine("Asset: " + path);
             report.AppendLine("Motion ID: " + motion.motionIdHex + " (" + motion.motionId + ")");
             report.AppendLine("Motion block: [0x" + start.ToString("X") + ", 0x" +
@@ -122,6 +205,7 @@ namespace MusafirEx.EMD2Unity
                     report.AppendLine("  Offset B absolute: 0x" + offsetB.ToString("X") +
                         " | first32: " + (track.dataEndRelative <= 0 ? "(not provided)" :
                         SampleHex(data, offsetB, start, end, 32)));
+                    AppendScaleCandidate(report, data, track, start, end);
                 }
                 if (motion.tracks.Count > maxTracks)
                     report.AppendLine("Truncated report after " + maxTracks + " tracks.");
