@@ -61,6 +61,15 @@ namespace MusafirEx.EMD2Unity
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("swapYAndZ"), new GUIContent("Convert PS3 Z-Up to Unity Y-Up"));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("reverseWinding"), new GUIContent("Reverse Triangle Winding"));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("useVertexColors"), new GUIContent("Preserve Vertex Colors"));
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("vertexColorsRgbaLast"),
+                        new GUIContent("Stage Vertex Colors Are RGBA (Experimental)"));
+                    EditorGUILayout.HelpBox(
+                        "Stage meshes like STG31/AREA02 have packed colors such as 4C 4C 4C FF. " +
+                        "RGBA reads this as grey with opaque alpha (76,76,76,255), while " +
+                        "legacy ARGB gives (76,76,255,76). Enable per EMD only after " +
+                        "checking the read-only UV audit. This does not change UVs, " +
+                        "textures, material bindings or original model files.",
+                        MessageType.Info);
                     EditorGUILayout.Space();
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("recoverSupportedPolygons"),
                         new GUIContent("Recover Supported Meshes (skip unsupported polygons)"));
@@ -68,10 +77,42 @@ namespace MusafirEx.EMD2Unity
                         "Optional stage-EMD recovery: keeps valid polygon records if others have unsupported vertex/index layouts. Skipped polygons remain missing and detailed reasons are written to Console. Off by default to preserve strict import behavior. Click Apply to reimport.",
                         MessageType.Info);
                     EditorGUILayout.HelpBox("Normals are recalculated. If the model appears inside-out, toggle Reverse Triangle Winding.", MessageType.Info);
+                    EditorGUILayout.Space();
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("alignUvBlocksTo16"),
+                        new GUIContent("Align UV Blocks to 16 Bytes (Experimental)"));
+                    EditorGUILayout.HelpBox(
+                        "STG30/AREA00 has 24-byte UV records with 16-byte block alignment. " +
+                        "Enable this to test correcting shifted UV and vertex-color records on " +
+                        "later meshes without changing materials or mesh geometry. " +
+                        "Off by default: other EMD layouts are not yet confirmed. " +
+                        "If enabled, this mode takes precedence over Preserve Zero UV Words. " +
+                        "Clear prior UV channel overrides and click Apply to test.",
+                        MessageType.Warning);
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("preserveZeroUvWords"),
+                        new GUIContent("Preserve Zero UV Words (Experimental)"));
+                    EditorGUILayout.HelpBox(
+                        "Legacy EMD parsing skips zero-valued 32-bit words after each UV block. " +
+                        "These zeros can be legitimate UV coordinates. Enable only for A/B comparison: " +
+                        "if the source contains real padding between blocks, this option can worsen " +
+                        "the next mesh's UVs. Geometry and material selection are unchanged.",
+                        MessageType.Warning);
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("uvChannelOverrides"),
+                        new GUIContent("Mesh Source UV Channel Overrides"), true);
+                    EditorGUILayout.HelpBox(
+                        "Optional overrides: enter an exact imported mesh name (for example obj_00_0) " +
+                        "and source UV channel 0..6. The read-only UV audit lists available channels. " +
+                        "UV0 remains unchanged when no override exists. Original source UV channels " +
+                        "also appear in Unity UV1..UV6 for inspection.",
+                        MessageType.Info);
                     if (GUILayout.Button("Diagnose Stage EMD Buffers (Read-only)"))
                     {
                         if (selectedEmd != null)
                             EmdStageBinaryDiagnostics.DiagnosePath(selectedEmd.assetPath);
+                    }
+                    if (GUILayout.Button("Diagnose EMD UV Mapping (Read-only)"))
+                    {
+                        if (selectedEmd != null)
+                            EmdUvMappingDiagnostics.DiagnosePath(selectedEmd.assetPath);
                     }
                     break;
                 case 1:

@@ -167,6 +167,44 @@ Open the source `.emd` in Project and click the **Materials** tab, then **Diagno
 
 Texture loading remains within the EMD's local `textures/` folder or model folder and now uses a deterministic order. If a local DDS is not importable as a Unity `Texture2D`, a same-basename loadable PNG/TGA can be tried without renaming materials. An auxiliary map with no explicit `_CO` counterpart is not automatically changed. This feature does not alter the original EMD/DDS bytes.
 
+### STG30/AREA00: 16-byte UV-block alignment candidate (experimental)
+
+### STG31/AREA02: UV alignment confirmed in audit; check RGBA vertex colors
+
+A subsequent read-only audit of `STG31/model/AREA02.emd`, with **Align UV Blocks to 16 Bytes** enabled, decoded **26/26 meshes, 20,465 vertices and zero invalid/extreme UV0 coordinates**. Original legacy UV starts were shifted by up to 64 bytes by the final mesh. The user's audit does **not** independently prove correct visual mapping, but supports the 16-byte UV-stream padding hypothesis.
+
+That audit also exposed a **separate packed vertex color ordering issue**: all 26 first-vertex samples ended in `FF`. For example `4C 4C 4C FF` is likely `RGBA(76,76,76,255)`, while the current MaxScript-compatible ARGB parser produces `RGBA(76,76,255,76)` (blue tint and reduced alpha). In **Model**, enable **Stage Vertex Colors Are RGBA (Experimental)** **for this EMD only** and click **Apply**. Keep **Align UV Blocks to 16 Bytes** on and **Mesh Source UV Channel Overrides** empty. The refreshed read-only UV audit shows the first vertex RGBA/ARGB interpretations for verification. This option changes generated vertex colors only, not textures, materials, geometry, or UVs. Keep disabled for other EMDs until source format is verified.
+
+
+
+A reported STG30 `AREA00.emd` UV audit showed five meshes with **24-byte UV vertex records**, but the third through fifth meshes had distorted UVs. Comparing the reported raw hex and vertex colors revealed that UV blocks appear to start on **absolute 16-byte file boundaries**, with nonzero padding possible between blocks:
+
+| Mesh | Old sequential UV start | 16-byte aligned candidate |
+| --- | --- | --- |
+| `obj000_0` | `0x126B0` | `0x126B0` |
+| `obj001_0_1` | `0x166A0` | `0x166A0` |
+| `obj001_1_2` | `0x24908` | `0x24910` |
+| `obj002_3` | `0x250D0` | `0x250E0` |
+| `obj003_4` | `0x28580` | `0x28590` |
+
+For example, on `obj001_1_2` the apparent vertex color shifts from corrupted bytes to `E8 E8 E8 FF` and the first primary UV becomes `(-4.875, 10.023)` when the record begins at the 16-byte boundary. Other affected groups show the same pattern. This supports an **alignment error**, not an alternative texture/UV channel.
+
+To test: select the affected `.emd` in Unity's Project panel, open **Model**, set **Mesh Source UV Channel Overrides** size to zero, enable **Align UV Blocks to 16 Bytes (Experimental)**, leave other UV experimental settings disabled, and **Apply**. Run **Diagnose EMD UV Mapping (Read-only)** again. It now prints decoded results for the 16-byte alignment alongside legacy and preserve-zero interpretations. Verify visuals on all five meshes and unrelated characters/stages before using as a default.
+
+**This is an experimental opt-in** until actual Unity rendering and game-original comparison confirm the format rule. No source EMD, EMAT or DDS bytes are edited.
+
+### Experimental EMD UV mapping audit (v0.5.8 branch)
+
+When the correct DDS texture is assigned but the image looks scrambled or randomly mapped on some meshes, examine **UV coordinates** rather than changing material bindings again. The EMD format can contain several UV pairs per vertex. Older import logic chose source channel 0 for 8–16-byte records or channel 3 for 20–28-byte records, following the available MaxScript reference. That choice may not match every game's shader input.
+
+Select the problem .emd in the **Project** window, open **Model**, then click **Diagnose EMD UV Mapping (Read-only)**. The same action is at **Tools > EMD2Unity > Diagnose Selected EMD UV Mapping**. The report is copied to the clipboard and Console. It lists per-mesh UV stride, source UV channels, source block start offset, number of zero bytes skipped after a UV block, two competing UV cursor-advance interpretations, raw UV sample/ranges, and imported Unity UV0. Compare a visibly good mesh against a scrambled mesh; being outside 0..1 is not by itself a defect because repeated textures often tile.
+
+For an individual scrambled mesh, use **Mesh Source UV Channel Overrides** in Model: add an element with exact **Mesh Name** from the report (such as `obj_00_0`) and **Source Channel** (0, 1, 2, 3, etc., only when listed). Click **Apply**. No rule means unchanged legacy UV0. Each original source UV set is additionally copied to Unity UV1 onward to help inspect different channels.
+
+If the report shows nonzero **zero bytes skipped** after a UV block, test **Preserve Zero UV Words (Experimental)** and click **Apply**, then compare the same surfaces. Some EMDs genuinely contain padding between UV blocks; enabling the option can shift their UVs incorrectly. Leave it **off** unless the original game reference and visual inspection support the change. Restoring the default and removing overrides returns to legacy mapping. Both settings affect imported Unity meshes only; the source EMD, EMAT and textures are never modified.
+
+**Validation needed:** A parser's UV statistics do not prove which UV set a PS3 shader used. This diagnostic can isolate corrupted stream offsets versus an alternate UV channel, but correct layered STG rendering may additionally require an EMAT shader/sampler analysis. Live Unity compilation and in-game comparison are pending.
+
 ### Ambiguous STG31 material texture references (v0.5.7)
 
 The source-binding report for `Assets/KRBWS/stg/STG31/model/AREA00.emd` confirms eight materials. Several have *two* explicit `_CO` references, so v0.5.6 left their original `_LI` diffuse assignments untouched rather than guessing. In v0.5.7, **Prefer Referenced _CO for Diffuse** uses a narrow exception: when the material name ends in a recognized auxiliary suffix, and **one of its own explicitly referenced** colours is the matching stem (e.g. `stg31_ground02_BL` references `stg31_ground02_CO`), select that `_CO` for Unity Standard Base Map if the local DDS/PNG is importable as a Texture2D. Otherwise leave it untouched.

@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.5.8 (experimental branch) — UV mapping diagnostics and opt-in mesh overrides
+
+- STG31/AREA02 audit checked 26 meshes and 20,465 vertices in aligned-16 mode. Every imported UV0 was finite; no values exceeded absolute 64. All 26 meshes parsed without skipped polygons, while legacy UV positions drifted cumulatively to 64 bytes before the final group.
+- The first raw packed vertex color of **all 26 groups** ended with `FF`, e.g. `4C 4C 4C FF`, `A7 AE B5 FF`, `D8 D8 D8 FF`. Legacy ARGB decoding incorrectly maps these as blue=255, alpha=first byte. Add opt-in **Stage Vertex Colors Are RGBA (Experimental)**, false by default, preserving old character/other EMD behavior until confirmed visually. ScriptedImporter revision 15 forces reimport.
+- UV diagnostic prints both RGBA and legacy ARGB interpretations from original four color bytes, and respects the importer's selected color format. UVs, geometry, source files, texture lookups and material bindings are not affected by this color option.
+
+
+- Added **Align UV Blocks to 16 Bytes (Experimental)** to the Model importer tab, disabled by default, with ScriptedImporter revision 14 for reimport. The new mode advances the next UV block to the absolute next 16-byte offset; nonzero padding is accepted. Preserve Zero UV Words does not affect this mode.
+- A user-provided STG30/AREA00 audit showed 24-byte UV records with starts `0x126B0, 0x166A0, 0x24908, 0x250D0, 0x28580`. Sixteen-byte alignment predicts `0x126B0, 0x166A0, 0x24910, 0x250E0, 0x28590`. The corrected first-vertex colors at affected groups match plausible ARGB bytes (e.g. `E8 E8 E8 FF`), and primary half-float UVs become finite. This is evidence for padding, **not yet visually verified**.
+- UV audit now performs a third read-only aligned-16 parse and prints per-mesh offset differences, decoded UV0 statistics and a first-vertex color. No default mesh channel, material selection or texture binding was changed.
+
+
+- STG30/AREA00 read-only UV audit (5 mesh groups, 24-byte UV records) confirms that both zero-skip modes start every mesh at identical offsets. The sole 4-byte skip occurs after the last mesh, so changing zero-skip mode cannot fix its reported UVs.
+- Invalid default UV3 was observed for obj001_1_2 (31/83 nonfinite), obj002_3 (28/562 nonfinite plus extreme coordinates) and obj003_4 (all 121 vertices contain V=32769). The most promising **manual test candidates**, not verified fixes, are respectively source channels 0 (also inspect 1), 2 and 2.
+- UV audit now flags unusable default UV data, lists finite/bounded/variable source channels for visual comparison and prints bounded hex from the first raw UV record to support investigation of per-mesh stream alignment. Original EMD, materials and texture bindings are unaffected.
+
+
+- Investigated a report that model textures now bind correctly, while some meshes render with scrambled texture coordinates.
+- Retained all EMD source UV pairs rather than discarding non-primary channels. The original UV0 selection remains unchanged by default: first source pair for 8/12/16-byte layouts, fourth pair for 20/24/28-byte layouts. Extra source channels are available in Unity UV1 onward.
+- Added optional **Preserve Zero UV Words (Experimental)** to avoid treating legitimate zero-valued coordinates as inter-block padding. This is deliberately off by default because some files may have real padding; turning it on can also make mappings worse.
+- Added exact-name **Mesh Source UV Channel Overrides** to choose a different source channel only for a named mesh. Unchanged meshes continue using their original mapping.
+- Added **Diagnose EMD UV Mapping (Read-only)** under Model tab and Tools menu. The audit compares legacy skip-zero and preserve-zero parses; prints per-mesh UV stride, source channels, UV offsets and skipped bytes, UV ranges and imported Unity UV0 statistics. It copies its report to Console/clipboard without changing assets.
+- ScriptedImporter revision 13 triggers reimport. Original game EMD, DDS and EMAT files are not rewritten. Unity compilation, correct UV channel usage and visual accuracy against PS3 remain **unverified** until tested in Editor.
+- Kept v0.5.7 texture binding logic intact.
+
+
 ## 0.5.7 — explicit material-stem match for ambiguous STG texture layers
 
 - Analyzed the complete user-provided STG31/AREA00 texture-binding report: 8 source materials and 8 mesh groups. Mesh objects 0, 1, 2, 5 and 7 still used auxiliary `_LI` maps as Unity diffuse, even though 0/1/2/5 have directly referenced material-name-matching `_CO` variants.
