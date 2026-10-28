@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased (experimental branch) — editable source-mesh copy for modified weapon tests
+
+- Diagnosed Unity Editor `handleblade_0: vertex count differs from the original EMD` when an edited FBX is used; the first `Read/Write` rejection was resolved and validation now reaches topology checks.
+- Added **Create Editable Weapon Copy from Original EMD**, cloning every imported weapon mesh into independent `.asset` files and assigning the newly-instantiated scene root to the exporter. Added **Apply Test Offset to handleblade_0 (Vertex #0)** for an unambiguous position-only game test that preserves mesh, triangle and weight counts.
+- Enhanced mismatch errors to identify expected EMD vertex count versus original-imported and edited mesh counts. Arbitrary topology-changing FBX exports remain deliberately unsupported.
+
 ## Unreleased (experimental branch) — EMD weapon binary round-trip audit
 
 - Added read-only **Weapon EMD Round-Trip Audit** Unity Editor window, comparing source and patched imported `.emd` files byte-for-byte.
