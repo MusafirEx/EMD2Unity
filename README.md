@@ -42,6 +42,16 @@ This preset is based on user-verified STG texturing and is **on by default** for
 Stage defaults do **not** apply to non-STG character/motion models; no original game EMD, EMAT or DDS data is edited. Existing EMD subassets will be reimported when Unity detects the updated ScriptedImporter revision 16. You can confirm the actual effective parser flags in **Diagnose EMD UV Mapping (Read-only)**.
 
 
+### Verify a weapon EMD export byte-for-byte
+
+After importing `DRV00_W00_patched.emd` in Unity, use **Tools → EMD2Unity → Weapon EMD Round-Trip Audit (Experimental)**. Assign **Original Weapon .emd** to `DRV00_W00.emd` and **Patched Weapon .emd** to `DRV00_W00_patched.emd`, then click **Compare Binary EMD Files**. The tool reads the two source files (not Unity mesh previews) and checks identical file lengths, polygon layout, bone/material/UV/skin/index/unknown data bytes and exactly which float32 position bytes changed. It reports source/target SHA-256, changed byte counts, each mesh's changed vertex count/max position delta and **PASS / FAIL**.
+
+- **PASS — byte-identical no-change round-trip** is the required first acceptance test.
+- **PASS — XYZ position-only changes** allows the next modified-blade experiment; PS3 compatibility still needs an in-game test.
+- **FAIL — non-position data differs** means the file should not be deployed as a position-only replacement.
+
+The audit is strictly read-only and logs the complete report to Unity Console, where it can be read again via the Unity MCP bridge. This lets us verify the user's exported EMD even when the MCP cannot directly download raw binary project assets. Click **Copy Audit Report** to share the detailed results.
+
 ### Experimental weapon EMD position-only patch (draft branch)
 
 The `feat/weapon-emd-position-patch-prototype` branch adds **Tools → EMD2Unity → Weapon EMD Position Patch (Experimental)**. This is deliberately **not** a general EMD exporter: it edits only the 12-byte big-endian XYZ positions in a copy of an original `_Wxx.emd`. The imported file's bone matrices/IDs, weight records, vertex order, triangle indices, materials, UV coordinates, vertex colors, unknown header fields and original bytes otherwise remain untouched. It never writes the original source asset.
