@@ -121,6 +121,14 @@ Some stage assets (e.g. `STG30/AREA01.emd`) have a polygon record with `headerTy
 
 The Rig tab now has **Repair Missing Bone Axes (Experimental)**, enabled by default. When an EMD bone has a zero-length X, Y or Z matrix axis, the importer reconstructs one missing axis from the other two using a cross product. If there is insufficient independent axis information it generates a fallback orthogonal frame. Console warnings identify each affected bone and the recovery method. Turn the option off to enforce strict import. Synthetic transforms can alter pose/skinning; visually verify DRV02/DRV03 and test their animations.
 
+### PEMT motion-track diagnostics and partial preview (v0.5.2)
+
+Some Motion IDs contain unknown PEMT markers (for example `0x02040022` in a DRV02 motion file). Existing confirmed position `0x02040021` and rotation `0x02040028` decoding is unchanged. The unknown track's payload meaning is **not** guessed.
+
+Select a `.pemt` asset and its numerical Motion ID in the Inspector, then click **Copy Selected Motion Track Report (hex / offsets)**. Or open **Tools > EMD2Unity > PEMT Animation Preview** and click **Copy Motion Track Report (hex / offsets)**. The report copies source path, numerical Motion ID, all track marker/info fields, relative and absolute pointer locations and 32-byte raw samples into the clipboard and Unity Console. Use it to investigate unsupported motion formats.
+
+The Preview window also has **Allow Partial Preview (skip unsupported track markers)**. It is OFF by default. When enabled, unknown tracks are omitted *only in the temporary, isolated preview*, and a visible warning plus Console details identify every skipped track. Missing channels remain in the imported pose; animations may appear incomplete. If no supported transform track matches the EMD skeleton, preview still fails with a clear message. **Export Selected** and **Export All** are always strict and never write incomplete clips by skipping unsupported track markers.
+
 ## Status
 
 | Component | Status |
