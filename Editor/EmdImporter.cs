@@ -1199,6 +1199,11 @@ namespace MusafirEx.EMD2Unity
                         catch (InvalidDataException) { uvOffset = r.Position; }
                     }
                     int skippedZeroBytes = uvOffset - uvBlockEnd;
+                    // Normal multi-group records also use this cursor when
+                    // locating a following group header. Follow the aligned
+                    // boundary consistently instead of leaving it inside pad.
+                    if (alignUvBlocksTo16 && uvOffset > r.Position)
+                        r.Seek(uvOffset);
 
                     EmdWeight[] weights = new EmdWeight[doc.Bones.Count > 0 ? pointCount : 0];
                     int nextGroupPosition = r.Position;
