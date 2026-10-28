@@ -2,6 +2,11 @@
 
 ## 0.5.8 (experimental branch) — UV mapping diagnostics and opt-in mesh overrides
 
+- Added **Align UV Blocks to 16 Bytes (Experimental)** to the Model importer tab, disabled by default, with ScriptedImporter revision 14 for reimport. The new mode advances the next UV block to the absolute next 16-byte offset; nonzero padding is accepted. Preserve Zero UV Words does not affect this mode.
+- A user-provided STG30/AREA00 audit showed 24-byte UV records with starts `0x126B0, 0x166A0, 0x24908, 0x250D0, 0x28580`. Sixteen-byte alignment predicts `0x126B0, 0x166A0, 0x24910, 0x250E0, 0x28590`. The corrected first-vertex colors at affected groups match plausible ARGB bytes (e.g. `E8 E8 E8 FF`), and primary half-float UVs become finite. This is evidence for padding, **not yet visually verified**.
+- UV audit now performs a third read-only aligned-16 parse and prints per-mesh offset differences, decoded UV0 statistics and a first-vertex color. No default mesh channel, material selection or texture binding was changed.
+
+
 - STG30/AREA00 read-only UV audit (5 mesh groups, 24-byte UV records) confirms that both zero-skip modes start every mesh at identical offsets. The sole 4-byte skip occurs after the last mesh, so changing zero-skip mode cannot fix its reported UVs.
 - Invalid default UV3 was observed for obj001_1_2 (31/83 nonfinite), obj002_3 (28/562 nonfinite plus extreme coordinates) and obj003_4 (all 121 vertices contain V=32769). The most promising **manual test candidates**, not verified fixes, are respectively source channels 0 (also inspect 1), 2 and 2.
 - UV audit now flags unusable default UV data, lists finite/bounded/variable source channels for visual comparison and prints bounded hex from the first raw UV record to support investigation of per-mesh stream alignment. Original EMD, materials and texture bindings are unaffected.
