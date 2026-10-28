@@ -42,6 +42,18 @@ This preset is based on user-verified STG texturing and is **on by default** for
 Stage defaults do **not** apply to non-STG character/motion models; no original game EMD, EMAT or DDS data is edited. Existing EMD subassets will be reimported when Unity detects the updated ScriptedImporter revision 16. You can confirm the actual effective parser flags in **Diagnose EMD UV Mapping (Read-only)**.
 
 
+### Phase 5C: Native FBX normals + skin weights (no original vertex donor)
+
+The **Tools → EMD2Unity → Direct FBX to Weapon EMD (Experimental)** editor now defaults to **Encode FBX normals and skin weights DIRECTLY (no nearest donor)**. This affects only FBX-replaced polygons; untouched EMD polygon data is retained.
+
+- **Vertices, triangles and UV0** come from the FBX. Native normals (or recalculated normals if the FBX has none) are transformed with the inverse transpose of the FBX transform and written as **3 big-endian float32 components** per vertex in EMD source coordinates. The original Kamen Rider PS3 3ds Max importer consumes this 12-byte stream as three floats.
+- Rigged FBX skin weight indices are remapped by **FBX bone name to original EMD bone name**. Each source polygon's existing EMD node remapping is inverted to encode up to four **[weight-byte, bone-ID-byte]** pairs. The four quantized weights are normalized to total 255. Missing or non-representable EMD bone identities are rejected, never borrowed.
+- For an unskinned/static FBX, the entire mapped mesh uses a selectable **Rigid bone for unskinned FBX** with 100% weight. For a rigged but unrelated FBX, check **Force rigid binding (ignore FBX armature/weights)** to use that same EMD bone deliberately.
+- Native mode uses **no nearest original vertex lookup** for replaced geometry, including normals, skin, UV and colors. If FBX vertex colors are not enabled, neutral opaque white is written. If optional UV export is off, UV is zero. Original EMD bone hierarchy, material assignments, polygon slots, and unmatched meshes remain intact.
+- The original weapon EMD still serves as a **binary format / bone / material template**. Standalone FBX-only creation of new EMD skeletons or materials is not yet implemented. Prior in-game successful FBX direct export used the **legacy nearest donor**; this new native attribute writer is **not yet confirmed in game**. Uncheck the native attributes option to restore the previously working algorithm if needed.
+
+Workflow: select original _Wxx.emd and the FBX root, map original polygon slots, leave **Encode FBX normals and skin weights DIRECTLY** enabled, pick an original EMD bone for rigid/unskinned geometry, click **EXPORT DIRECT FBX → NEW .EMD**, and save using a new filename.
+
 ### Phase 5B: Direct FBX → Weapon EMD (one-window export, experimental)
 
 **Tools → EMD2Unity → Direct FBX to Weapon EMD (Experimental)** replaces the older two-window FBX Preparation + Topology Rebuild workflow for users who want to export immediately. **An original `_Wxx.emd` template is still required:** the existing game-specific format's bones, material assignments, polygon count, opaque 12-byte per-vertex attributes, and skin data cannot reliably be synthesized from a standalone FBX yet.
