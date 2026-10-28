@@ -257,7 +257,11 @@ namespace MusafirEx.EMD2Unity
                 if (string.Equals(Path.GetFullPath(dest), absoluteSource,
                         StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException("Refusing to overwrite the original source EMD.");
-                File.WriteAllBytes(dest, output);
+                if (File.Exists(dest))
+                    throw new InvalidDataException("Refusing to overwrite an existing EMD. Choose a new output filename.");
+                // CreateNew also guards against a file appearing between validation and write.
+                using (var stream = new FileStream(dest, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    stream.Write(output, 0, output.Length);
                 lastResult = "Exported " + patches.Count + " mesh groups / " + totalVertices +
                     " vertices to " + dest + ". Changed positions in " + changedCoordinates +
                     " vertices. Original EMD, bone data, UV, material and topology retained.";
