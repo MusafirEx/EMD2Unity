@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.8 (experimental branch) — UV mapping diagnostics and opt-in mesh overrides
+
+- Investigated a report that model textures now bind correctly, while some meshes render with scrambled texture coordinates.
+- Retained all EMD source UV pairs rather than discarding non-primary channels. The original UV0 selection remains unchanged by default: first source pair for 8/12/16-byte layouts, fourth pair for 20/24/28-byte layouts. Extra source channels are available in Unity UV1 onward.
+- Added optional **Preserve Zero UV Words (Experimental)** to avoid treating legitimate zero-valued coordinates as inter-block padding. This is deliberately off by default because some files may have real padding; turning it on can also make mappings worse.
+- Added exact-name **Mesh Source UV Channel Overrides** to choose a different source channel only for a named mesh. Unchanged meshes continue using their original mapping.
+- Added **Diagnose EMD UV Mapping (Read-only)** under Model tab and Tools menu. The audit compares legacy skip-zero and preserve-zero parses; prints per-mesh UV stride, source channels, UV offsets and skipped bytes, UV ranges and imported Unity UV0 statistics. It copies its report to Console/clipboard without changing assets.
+- ScriptedImporter revision 13 triggers reimport. Original game EMD, DDS and EMAT files are not rewritten. Unity compilation, correct UV channel usage and visual accuracy against PS3 remain **unverified** until tested in Editor.
+- Kept v0.5.7 texture binding logic intact.
+
+
 ## 0.5.7 — explicit material-stem match for ambiguous STG texture layers
 
 - Analyzed the complete user-provided STG31/AREA00 texture-binding report: 8 source materials and 8 mesh groups. Mesh objects 0, 1, 2, 5 and 7 still used auxiliary `_LI` maps as Unity diffuse, even though 0/1/2/5 have directly referenced material-name-matching `_CO` variants.
