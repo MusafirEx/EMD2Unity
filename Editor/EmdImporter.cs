@@ -702,6 +702,9 @@ namespace MusafirEx.EMD2Unity
         public int UvStride;
         public int UvStartOffset;
         public int UvSkippedZeroBytes;
+        public int UvGroupHeaderOffset;
+        public int UvHeaderPointerRaw;
+        public int UvHeaderSecondaryRaw;
         public Color32[] Colors;
         public EmdWeight[] Weights;
     }
@@ -711,6 +714,7 @@ namespace MusafirEx.EMD2Unity
         public readonly List<EmdMaterial> Materials = new List<EmdMaterial>();
         public readonly List<EmdGroup> Groups = new List<EmdGroup>();
         public int DeclaredPolygonCount;
+        public int FileUvOffset;
         public int EmptyGroupCount;
         public int RecoveredPolygonCount;
         public int SkippedPolygonCount;
@@ -813,6 +817,7 @@ namespace MusafirEx.EMD2Unity
             int polygonOffset = r.I32(); r.I32();
             int boneOffset = r.I32(); int materialOffset = r.I32();
             int uvOffset = r.I32(); r.I32(); r.I32();
+            doc.FileUvOffset = uvOffset;
             doc.DeclaredPolygonCount = polygonCount;
             ValidateCount(polygonCount, "polygon");
             ValidateCount(boneCount, "bone");
@@ -929,7 +934,8 @@ namespace MusafirEx.EMD2Unity
                     int node3 = r.U16() / 0x30;
                     r.U16(); r.U16(); r.U16();
                     int weightJump = checked(basePos + r.I32());
-                    r.I32(); r.I32();
+                    int uvHeaderPointerRaw = r.I32(); // +0x34: labelled ActualUVStart by original MaxScript
+                    int uvHeaderSecondaryRaw = r.I32(); // +0x38: unknown auxiliary value
                     for (int k = 0; k < 7; ++k) r.I32();
                     r.I32(); r.I32(); r.I32();
                     r.I32(); r.I32(); r.I32(); r.I32();
@@ -1204,6 +1210,9 @@ namespace MusafirEx.EMD2Unity
                         UV = uvs, SourceUvChannels = sourceUvChannels,
                         UvStride = uvStride, UvStartOffset = sourceUvStart,
                         UvSkippedZeroBytes = skippedZeroBytes,
+                        UvGroupHeaderOffset = basePos,
+                        UvHeaderPointerRaw = uvHeaderPointerRaw,
+                        UvHeaderSecondaryRaw = uvHeaderSecondaryRaw,
                         Colors = colors, Weights = weights
                     });
                     r.Seek(nextGroupPosition);
