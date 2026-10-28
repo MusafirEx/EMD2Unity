@@ -136,10 +136,26 @@ namespace MusafirEx.EMD2Unity
                     if (EmdImporter.IsAuxiliaryTextureName(mat.TextureName))
                     {
                         report.AppendLine("  CHECK: original diffuse candidate has auxiliary suffix.");
+                        string stemMatch = EmdImporter.FindMatchingMaterialColour(
+                            mat.Name, colours);
                         if (colours.Count == 1)
                             report.AppendLine("  Unique source-supported _CO: " + colours[0]);
+                        else if (!string.IsNullOrEmpty(stemMatch))
+                            report.AppendLine("  MATERIAL-STEM MATCH: " + stemMatch +
+                                " (candidate single-texture diffuse, not layered PS3 rendering)");
                         else if (colours.Count > 1)
-                            report.AppendLine("  AMBIGUOUS: multiple _CO references; no guessing.");
+                            report.AppendLine("  AMBIGUOUS: multiple _CO references with " +
+                                "no exact material-stem match; keep original.");
+                        string proposed = colours.Count == 1 ? colours[0] : stemMatch;
+                        if (!string.IsNullOrEmpty(proposed))
+                        {
+                            var paths = EmdImporter.FindTextureCandidates(emdPath, proposed);
+                            string usable = paths.FirstOrDefault(candidate =>
+                                AssetDatabase.LoadAssetAtPath<Texture2D>(candidate) != null);
+                            report.AppendLine("  Proposed diffuse from explicit names: " +
+                                proposed + " | loadable=" + (usable != null) +
+                                " | exact asset=" + (usable ?? "(none)"));
+                        }
                     }
                     foreach (string colour in colours)
                     {
@@ -196,8 +212,10 @@ namespace MusafirEx.EMD2Unity
                 }
             }
             report.AppendLine("");
-            report.AppendLine("An _LI/_BL suffix or unique _CO candidate indicates a possible " +
-                "mapping issue, not definitive proof. Confirm against original render.");
+            report.AppendLine("This report is read-only. A material-stem-matched _CO " +
+                "can be a better Unity Standard diffuse fallback, but multi-texture " +
+                "STG blending, masks and lighting are NOT recreated. " +
+                "Compare against the original game's rendered material.");
             return report.ToString();
         }
     }
