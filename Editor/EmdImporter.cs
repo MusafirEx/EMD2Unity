@@ -426,7 +426,7 @@ namespace MusafirEx.EMD2Unity
                 mesh.triangles = triangles;
                 Vector2[] chosenUv = info.UV;
                 string meshName = info.Name + "_" + i;
-                for (int ruleIndex = 0; ruleIndex < uvChannelOverrides.Count; ruleIndex++)
+                for (int ruleIndex = 0; ruleIndex < (uvChannelOverrides == null ? 0 : uvChannelOverrides.Count); ruleIndex++)
                 {
                     EmdUvChannelOverride rule = uvChannelOverrides[ruleIndex];
                     if (rule == null || string.IsNullOrWhiteSpace(rule.meshName) ||
