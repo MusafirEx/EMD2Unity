@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased (experimental branch) — Phase 5A Blender/FBX weapon mesh preparation
+
+- Added **Weapon FBX Preparation (Experimental)** for arbitrary imported Blender/FBX mesh names mapped explicitly to existing EMD polygon slots, including nested FBX transform baking, mirrored-winding correction and UV0 validation.
+- Prepares native-EMD-compatible scene roots with independent mesh assets and **nearest-original EMD donor skin weights** for a meaningful Unity rig preview, while retaining original skeleton, material/polygon slot count and preserving source EMD/FBX assets.
+- Adds donor-distance guard and multi-mesh uniqueness checks; supports partial replacement of only one EMD mesh group. FBX meshes with multiple submeshes must first be separated by material slot.
+- Added opt-in **Write edited mesh vertex colors** in the Phase 4 topology exporter with ARGB/RGBA serialization matching the source EMD importer setting. Keeps the original source vertex color transfer as default and validates source polygon name/material consistency after rebuild.
+- Previous Phase 4 controlled changed-topology output was user-reported to work in game. **Arbitrary FBX mesh compatibility and correct game normals/skin weights are not yet verified**. Opaque 12-byte per-vertex attributes and weight encoding must be decoded before production support.
+
 ## Unreleased (experimental branch) — weapon EMD variable-topology rebuild alpha
 
 - Added **Weapon EMD Topology Rebuild (Experimental)** as a separate Unity Editor tool; accepts a different number of vertices and triangle indices on existing `_Wxx.emd` mesh groups with the validated type-`0x0004`, 8-byte UV record and 16-byte stream alignment.
