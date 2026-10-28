@@ -24,7 +24,7 @@ namespace MusafirEx.EMD2Unity
         [Range(0, 6)] public int sourceChannel;
     }
 
-    [ScriptedImporter(14, "emd")]
+    [ScriptedImporter(15, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         [Header("Model")]
@@ -32,6 +32,10 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private bool swapYAndZ = true;
         [SerializeField] private bool reverseWinding = false;
         [SerializeField] private bool useVertexColors = true;
+        // Stage models inspected so far frequently store vertex colors as
+        // RGBA (with alpha FF in the fourth byte), while the MaxScript
+        // reference assumes ARGB. Keep ARGB as the default for compatibility.
+        [SerializeField] private bool vertexColorsRgbaLast = false;
         [SerializeField] private bool recoverSupportedPolygons = false;
         // Off retains the original MaxScript-compatible zero-padding scan.
         // On preserves leading zero words in the following UV block.
@@ -59,7 +63,7 @@ namespace MusafirEx.EMD2Unity
             {
                 byte[] data = File.ReadAllBytes(ctx.assetPath);
                 var document = EmdParser.Parse(data, recoverSupportedPolygons, preserveZeroUvWords,
-                    alignUvBlocksTo16);
+                    alignUvBlocksTo16, vertexColorsRgbaLast);
                 CreateUnityAssets(ctx, document);
                 foreach (string warning in document.ImportWarnings)
                     ctx.LogImportWarning(warning);
@@ -811,7 +815,8 @@ namespace MusafirEx.EMD2Unity
         }
 
         public static EmdDocument Parse(byte[] data, bool recoverSupportedPolygons = false,
-            bool preserveZeroUvWords = false, bool alignUvBlocksTo16 = false)
+            bool preserveZeroUvWords = false, bool alignUvBlocksTo16 = false,
+            bool vertexColorsRgbaLast = false)
         {
             if (data.Length < 0x68) throw new InvalidDataException("EMD header is too short.");
             var r = new BeReader(data);
@@ -1133,8 +1138,11 @@ namespace MusafirEx.EMD2Unity
                         // UVsize 5,6: 3 UVs first, ARGB, then 1-2 UVs; pick fourth UV.
                         if (uvSize <= 4)
                         {
-                            byte a = r.U8(), red = r.U8(), green = r.U8(), blue = r.U8();
-                            colors[v] = new Color32(red, green, blue, a);
+                            byte first = r.U8(), second = r.U8();
+                            byte third = r.U8(), fourth = r.U8();
+                            colors[v] = vertexColorsRgbaLast ?
+                                new Color32(first, second, third, fourth) :
+                                new Color32(second, third, fourth, first);
                             for (int slot = 0; slot < uvSize - 1; ++slot)
                             {
                                 // The source MaxScript half converter returns half the IEEE value;
@@ -1154,8 +1162,11 @@ namespace MusafirEx.EMD2Unity
                                 float t = 1f - r.Half();
                                 sourceUvChannels[slot][v] = new Vector2(u, t);
                             }
-                            byte a = r.U8(), red = r.U8(), green = r.U8(), blue = r.U8();
-                            colors[v] = new Color32(red, green, blue, a);
+                            byte first = r.U8(), second = r.U8();
+                            byte third = r.U8(), fourth = r.U8();
+                            colors[v] = vertexColorsRgbaLast ?
+                                new Color32(first, second, third, fourth) :
+                                new Color32(second, third, fourth, first);
                             for (int slot = 0; slot < uvSize - 4; ++slot)
                             {
                                 // The source MaxScript half converter returns half the IEEE value;
