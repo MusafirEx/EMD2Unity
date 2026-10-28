@@ -42,6 +42,19 @@ This preset is based on user-verified STG texturing and is **on by default** for
 Stage defaults do **not** apply to non-STG character/motion models; no original game EMD, EMAT or DDS data is edited. Existing EMD subassets will be reimported when Unity detects the updated ScriptedImporter revision 16. You can confirm the actual effective parser flags in **Diagnose EMD UV Mapping (Read-only)**.
 
 
+### Phase 5B: Direct FBX → Weapon EMD (one-window export, experimental)
+
+**Tools → EMD2Unity → Direct FBX to Weapon EMD (Experimental)** replaces the older two-window FBX Preparation + Topology Rebuild workflow for users who want to export immediately. **An original `_Wxx.emd` template is still required:** the existing game-specific format's bones, material assignments, polygon count, opaque 12-byte per-vertex attributes, and skin data cannot reliably be synthesized from a standalone FBX yet.
+
+**One-step workflow:**
+1. Import a Blender FBX into Unity, enable **Read/Write Enabled** under its Model import settings, and provide UV0 if you want to export new UVs.
+2. Open **Direct FBX to Weapon EMD**. Choose the **original** game `DRV00_W00.emd` as **Original Weapon .emd (template)** and choose the FBX asset or a scene instance as **FBX or Blender Model**.
+3. Each EMD polygon/material slot has a dropdown to select an FBX mesh **or FBX submesh/material slot**. `Auto-map meshes` matches identical names and maps a single FBX entry to the first EMD slot. `Map in order` assigns available entries sequentially. Leave unmapped EMD slots as original. The supported total number of polygon/material slots is determined by the original EMD; creating new slots is not supported.
+4. Enable **Bake FBX root transform** to apply the FBX root's position, scale and rotation (default). Turn it off if a scene object's root placement should be ignored. **Export FBX UV0** defaults on; vertex colors can be opted into if the FBX has them.
+5. Click **EXPORT DIRECT FBX → NEW .EMD**. The tool remaps only referenced FBX submesh vertices and triangle indices, copies geometry into transient memory, calls the existing guarded EMD binary rebuild/parse and prompts for a **new** `.emd` output filename. It will not overwrite an existing or original source file. Temporary meshes/GameObjects are destroyed after export; no intermediate `.asset` or Scene copy remains.
+
+**Direct means no preparation workflow or donor-distance threshold.** The converter **still transfers source EMD 12-byte auxiliary vertex blocks and raw 8-byte bone weights from nearest original positions**. It does not encode an FBX armature, new material assignments, faithful FBX normals/tangents or completely new EMD skeletons. For very different FBX shapes, the result may render or deform incorrectly. The prior Phase 4 native-topology test passed in game, but the arbitrary FBX direct-conversion path has **not been verified in Unity or in game yet**. Keep original game backups.
+
 ### Phase 5A troubleshooting: FBX donor-distance limit exceeded
 
 If FBX preparation reports `handleblade_0: transformed vertex 392 is 1.1426 Unity units from its closest original vertex`, this is **not** a parsing error or changed-topology failure. The default safety limit in **Weapon FBX Preparation** is 1.0 Unity unit. The source and edited model positions may be misaligned, their relative scale/axis may differ, or the FBX design may genuinely extend away from the original mesh.
