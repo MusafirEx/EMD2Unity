@@ -15,6 +15,7 @@ namespace MusafirEx.EMD2Unity
     {
         private GameObject sourceModel;
         private GameObject editedModel;
+        private Vector3 testOffset = new Vector3(0.05f, 0f, 0f);
         private string lastResult;
 
         [MenuItem("Tools/EMD2Unity/Weapon EMD Position Patch (Experimental)")]
@@ -37,9 +38,18 @@ namespace MusafirEx.EMD2Unity
                 "Original .emd Model Asset", sourceModel, typeof(GameObject), false);
             editedModel = (GameObject)EditorGUILayout.ObjectField(
                 "Edited Model Root", editedModel, typeof(GameObject), true);
+            using (new EditorGUI.DisabledScope(sourceModel == null))
+                if (GUILayout.Button("Create Editable Weapon Copy from Original EMD"))
+                    CreateEditableCopy();
+            testOffset = EditorGUILayout.Vector3Field("Test Vertex #0 Offset", testOffset);
+            using (new EditorGUI.DisabledScope(editedModel == null))
+                if (GUILayout.Button("Apply Test Offset to handleblade_0 (Vertex #0)"))
+                    ApplyTestOffset();
             EditorGUILayout.HelpBox(
                 "Copy the imported weapon root and edit the existing mesh vertex positions " +
                 "without changing vertex order, faces, skinning or child mesh transforms. " +
+                "For FBX assets that split or merge vertices, use the Create Editable Copy " +
+                "button above to preserve the original topology, then apply the small test offset. " +
                 "The modified root may be a scene object or prefab asset. " +
                 "A no-change test can use the source model as both fields.",
                 MessageType.Info);
@@ -48,6 +58,115 @@ namespace MusafirEx.EMD2Unity
                     Export();
             if (!string.IsNullOrEmpty(lastResult))
                 EditorGUILayout.HelpBox(lastResult, MessageType.Info);
+        }
+
+        private void CreateEditableCopy()
+        {
+            GameObject copy = null;
+            try
+            {
+                string sourcePath = AssetDatabase.GetAssetPath(sourceModel);
+                if (string.IsNullOrEmpty(sourcePath) ||
+                    !sourcePath.EndsWith(".emd", StringComparison.OrdinalIgnoreCase) ||
+                    !Regex.IsMatch(Path.GetFileNameWithoutExtension(sourcePath), @"_W[0-9]{2,}$",
+                        RegexOptions.IgnoreCase) ||
+                    !(AssetImporter.GetAtPath(sourcePath) is EmdImporter))
+                    throw new InvalidDataException("Choose an original _Wxx.emd imported GameObject asset.");
+
+                // Clone from the native EMD import, not FBX: EMD vertex order/indices/weights are retained.
+                if (!AssetDatabase.IsValidFolder("Assets/EMD2Unity_Editable"))
+                    AssetDatabase.CreateFolder("Assets", "EMD2Unity_Editable");
+                string uniqueFolder = AssetDatabase.GenerateUniqueAssetPath(
+                    "Assets/EMD2Unity_Editable/" + Path.GetFileNameWithoutExtension(sourcePath) + "_copy");
+                string createdGuid = AssetDatabase.CreateFolder(
+                    "Assets/EMD2Unity_Editable", Path.GetFileName(uniqueFolder));
+                if (string.IsNullOrEmpty(createdGuid))
+                    throw new IOException("Could not create dedicated editable mesh folder.");
+                copy = (GameObject)PrefabUtility.InstantiatePrefab(sourceModel);
+                if (copy == null)
+                    copy = Instantiate(sourceModel);
+                copy.name = sourceModel.name + "_Editable";
+                Undo.RegisterCreatedObjectUndo(copy, "Create editable weapon EMD copy");
+                int clones = 0;
+                foreach (Transform child in copy.GetComponentsInChildren<Transform>(true))
+                {
+                    var renderer = child.GetComponent<SkinnedMeshRenderer>();
+                    var filter = child.GetComponent<MeshFilter>();
+                    Mesh original = renderer != null ? renderer.sharedMesh :
+                        filter != null ? filter.sharedMesh : null;
+                    if (original == null) continue;
+                    if (!original.isReadable)
+                        throw new InvalidDataException(child.name +
+                            ": source EMD mesh must be readable before creating an editable copy.");
+                    Mesh duplicate = Instantiate(original);
+                    duplicate.name = child.name + "_EditableMesh";
+                    string path = AssetDatabase.GenerateUniqueAssetPath(
+                        uniqueFolder + "/" + child.name + "_Editable.asset");
+                    AssetDatabase.CreateAsset(duplicate, path);
+                    if (renderer != null) renderer.sharedMesh = duplicate;
+                    else filter.sharedMesh = duplicate;
+                    clones++;
+                }
+                if (clones == 0)
+                    throw new InvalidDataException("Source model contains no readable mesh children.");
+                AssetDatabase.SaveAssets();
+                editedModel = copy;
+                Selection.activeGameObject = copy;
+                EditorGUIUtility.PingObject(copy);
+                lastResult = "Created editable Scene copy (" + clones + " independent meshes) at " +
+                    uniqueFolder + ". Source EMD and mesh assets remain untouched. " +
+                    "Click Apply Test Offset, then export to a NEW .emd filename.";
+                Debug.Log("EMD2Unity weapon edit: " + lastResult);
+            }
+            catch (Exception ex)
+            {
+                lastResult = "Could not create editable weapon copy: " + ex.Message;
+                Debug.LogError("EMD2Unity editable copy: " + ex);
+                if (copy != null) Undo.DestroyObjectImmediate(copy);
+            }
+        }
+
+        private void ApplyTestOffset()
+        {
+            try
+            {
+                if (editedModel == sourceModel ||
+                    !editedModel.scene.IsValid() ||
+                    !editedModel.scene.isLoaded)
+                    throw new InvalidDataException(
+                        "Choose a created editable Scene instance. Never edit the original imported asset.");
+                Mesh mesh = FindMesh(editedModel, "handleblade_0");
+                string assetPath = AssetDatabase.GetAssetPath(mesh).Replace('\\', '/');
+                if (!assetPath.StartsWith("Assets/EMD2Unity_Editable/",
+                        StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException(
+                        "Test offset only supports independent cloned meshes from Create Editable Copy. " +
+                        "Do not modify a source EMD or imported FBX mesh asset.");
+                if (!mesh.isReadable || mesh.vertexCount < 1)
+                    throw new InvalidDataException("handleblade_0 is not a readable mesh with vertices.");
+                if (float.IsNaN(testOffset.x) || float.IsNaN(testOffset.y) ||
+                    float.IsNaN(testOffset.z) || float.IsInfinity(testOffset.x) ||
+                    float.IsInfinity(testOffset.y) || float.IsInfinity(testOffset.z) ||
+                    testOffset == Vector3.zero)
+                    throw new InvalidDataException("Set a nonzero finite vertex offset.");
+                Vector3[] positions = mesh.vertices;
+                Undo.RecordObject(mesh, "Offset weapon test vertex");
+                positions[0] += testOffset;
+                mesh.vertices = positions;
+                mesh.RecalculateBounds();
+                mesh.RecalculateNormals();
+                EditorUtility.SetDirty(mesh);
+                AssetDatabase.SaveAssets();
+                lastResult = "Moved handleblade_0 vertex #0 by " + testOffset +
+                    ". All triangle indices, vertex count, skin weights and original EMD bytes remain unchanged. " +
+                    "Export to a new .emd and run the binary round-trip audit.";
+                Debug.Log("EMD2Unity weapon edit: " + lastResult);
+            }
+            catch (Exception ex)
+            {
+                lastResult = "Could not apply weapon vertex test offset: " + ex.Message;
+                Debug.LogError("EMD2Unity weapon edit: " + ex);
+            }
         }
 
         private sealed class MeshPatch
@@ -116,7 +235,11 @@ namespace MusafirEx.EMD2Unity
             if (!edited.isReadable || !reference.isReadable)
                 throw new InvalidDataException(name + ": mesh Read/Write must be enabled.");
             if (reference.vertexCount != vertexCount || edited.vertexCount != vertexCount)
-                throw new InvalidDataException(name + ": vertex count differs from the original EMD.");
+                throw new InvalidDataException(name + ": vertex count differs. EMD expected=" +
+                    vertexCount + ", reference Mesh=" + reference.vertexCount +
+                    ", edited Mesh=" + edited.vertexCount +
+                    ". FBX reimports can split/merge vertices. Use Create Editable Weapon Copy " +
+                    "from the source .emd to preserve topology.");
             if (reference.subMeshCount != 1 || edited.subMeshCount != 1)
                 throw new InvalidDataException(name + ": only one triangle submesh is supported.");
             int[] a = reference.triangles, b = edited.triangles;
