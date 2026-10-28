@@ -167,6 +167,14 @@ Open the source `.emd` in Project and click the **Materials** tab, then **Diagno
 
 Texture loading remains within the EMD's local `textures/` folder or model folder and now uses a deterministic order. If a local DDS is not importable as a Unity `Texture2D`, a same-basename loadable PNG/TGA can be tried without renaming materials. An auxiliary map with no explicit `_CO` counterpart is not automatically changed. This feature does not alter the original EMD/DDS bytes.
 
+### Ambiguous STG31 material texture references (v0.5.7)
+
+The source-binding report for `Assets/KRBWS/stg/STG31/model/AREA00.emd` confirms eight materials. Several have *two* explicit `_CO` references, so v0.5.6 left their original `_LI` diffuse assignments untouched rather than guessing. In v0.5.7, **Prefer Referenced _CO for Diffuse** uses a narrow exception: when the material name ends in a recognized auxiliary suffix, and **one of its own explicitly referenced** colours is the matching stem (e.g. `stg31_ground02_BL` references `stg31_ground02_CO`), select that `_CO` for Unity Standard Base Map if the local DDS/PNG is importable as a Texture2D. Otherwise leave it untouched.
+
+For the reported AREA00 model, `obj_00_0`, `obj_01_1`, `obj_02_2` and `obj_05_5` have material-stem-matching candidate `_CO` maps. `obj_07_7` remains unresolved; the report lists two ground textures and no matching soukojimen01_CO, which may indicate a layered material. Do **not** assign an arbitrary ground texture as a final fix. Multi-texture blending, masks and PS3 lighting are **not** reconstructed by simply choosing a different main texture.
+
+After upgrading, select `STG31/model/AREA00.emd` in Unity Project, open **Materials**, keep **Prefer Referenced _CO for Diffuse** enabled, and reimport if necessary. Run **Diagnose EMD Texture Bindings (Read-only)** again. Compare exact Unity renderer diffuse sources with the old audit and visually inspect geometry. Untick the option and Apply to return to the first-submaterial mapping.
+
 ## Status
 
 | Component | Status |
