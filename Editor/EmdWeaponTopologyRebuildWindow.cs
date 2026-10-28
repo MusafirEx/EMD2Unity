@@ -156,6 +156,11 @@ namespace MusafirEx.EMD2Unity
                 worker.directReplacedParts = new HashSet<string>(replacedParts);
                 worker.directNativeFbxAttributes = useNativeFbxAttributes;
                 worker.Run();
+                if (string.IsNullOrEmpty(worker.lastReport) ||
+                    worker.lastReport.StartsWith("EMD topology rebuild refused:",
+                        StringComparison.Ordinal))
+                    throw new InvalidDataException(worker.lastReport ??
+                        "EMD binary exporter did not produce a report.");
                 return worker.lastReport;
             }
             finally
@@ -490,8 +495,7 @@ namespace MusafirEx.EMD2Unity
                 if (polyCount < 1 || polyCount > 32 || originalPolyStart < 0xB0 ||
                     oldUV <= originalPolyStart || oldUV >= original.Length)
                     throw new InvalidDataException("Unsupported source polygon/UV offsets.");
-                EmdDocument originalDocument = directNativeFbxAttributes
-                    ? EmdParser.Parse(original) : null;
+                EmdDocument originalDocument = EmdParser.Parse(original);
                 if (directNativeFbxAttributes && originalDocument.Bones.Count == 0)
                     throw new InvalidDataException(
                         "Native FBX bone export requires an EMD with a real bone table.");
@@ -711,7 +715,7 @@ namespace MusafirEx.EMD2Unity
                 int validatedTriangles = 0;
                 for (int i = 0; i < polyCount; i++)
                 {
-                    var originalGroup = EmdParser.Parse(original).Groups[i];
+                    var originalGroup = originalDocument.Groups[i];
                     var newGroup = parsed.Groups[i];
                     if (newGroup.Vertices.Length < 3 ||
                         newGroup.Triangles.Length < 3 ||
@@ -719,6 +723,36 @@ namespace MusafirEx.EMD2Unity
                         newGroup.MaterialIndex != originalGroup.MaterialIndex ||
                         newGroup.Name != originalGroup.Name)
                         throw new InvalidDataException("Reimport validation failed for mesh #" + i);
+                    if (directNativeFbxAttributes && directReplacedParts != null &&
+                        directReplacedParts.Contains(newGroup.Name + "_" + i))
+                    {
+                        Mesh exportedMesh = FindEditedMesh(editedWeapon, newGroup.Name + "_" + i);
+                        BoneWeight[] expectedSkin = exportedMesh.boneWeights;
+                        if (newGroup.Weights.Length != newGroup.Vertices.Length ||
+                            expectedSkin.Length != newGroup.Vertices.Length)
+                            throw new InvalidDataException(newGroup.Name +
+                                ": native FBX skin weights missing after EMD parser reimport.");
+                        for (int v = 0; v < expectedSkin.Length; ++v)
+                        {
+                            BoneWeight expected = expectedSkin[v];
+                            float sum = expected.weight0 + expected.weight1 +
+                                expected.weight2 + expected.weight3;
+                            int[] ids = { expected.boneIndex0, expected.boneIndex1,
+                                expected.boneIndex2, expected.boneIndex3 };
+                            float[] vals = { expected.weight0, expected.weight1,
+                                expected.weight2, expected.weight3 };
+                            for (int k = 0; k < 4; ++k)
+                            {
+                                float normalized = sum > 1e-6f ? vals[k] / sum : 0f;
+                                if (Mathf.Abs(newGroup.Weights[v].Values[k] - normalized) > 0.006f ||
+                                    (normalized > 0.006f &&
+                                     newGroup.Weights[v].Indices[k] != ids[k]))
+                                    throw new InvalidDataException(newGroup.Name +
+                                        ": native FBX skin reimport mismatch at vertex " +
+                                        v + ", bone channel " + k);
+                            }
+                        }
+                    }
                     validatedVertices += newGroup.Vertices.Length;
                     validatedTriangles += newGroup.Triangles.Length / 3;
                 }
