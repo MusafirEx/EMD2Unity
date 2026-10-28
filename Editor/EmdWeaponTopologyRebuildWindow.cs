@@ -538,6 +538,9 @@ namespace MusafirEx.EMD2Unity
                     Vector3 min = new Vector3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
                     Vector3 max = new Vector3(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity);
                     float maximumTransfer = 0f;
+                    bool directChangedPart = directReplacedParts == null ||
+                        directReplacedParts.Contains(sp.name + "_" + i);
+                    bool nativePart = directNativeFbxAttributes && directChangedPart;
                     bool preserveOrder = preserveIndexAttributes && n == sp.vertices;
                     for (int v = 0; v < n; v++)
                     {
@@ -546,8 +549,18 @@ namespace MusafirEx.EMD2Unity
                         WriteF32(positions, v * 12 + 4, p.y);
                         WriteF32(positions, v * 12 + 8, p.z);
                         min = Vector3.Min(min, p); max = Vector3.Max(max, p);
+                        if (nativePart)
+                        {
+                            // No original-vertex lookup for FBX-native geometry.
+                            // Default missing per-vertex colors to opaque white.
+                            int uv = v * 8;
+                            uvData[uv] = 255; uvData[uv + 1] = 255;
+                            uvData[uv + 2] = 255; uvData[uv + 3] = 255;
+                            continue;
+                        }
                         float nearestDistance = 0f;
-                        int closest = preserveOrder ? v : ClosestVertex(p, oldCoords, out nearestDistance);
+                        int closest = preserveOrder ? v :
+                            ClosestVertex(p, oldCoords, out nearestDistance);
                         if (preserveOrder) nearestDistance = (p - oldCoords[v]).magnitude;
                         if (nearestDistance > maximumTransfer) maximumTransfer = nearestDistance;
                         if (nearestDistance > attributeTransferLimit)
@@ -555,20 +568,14 @@ namespace MusafirEx.EMD2Unity
                                 " is " + nearestDistance.ToString("G5") +
                                 " EMD model units away from original attribute donor " +
                                 closest + ". Increase transfer limit ONLY if deliberate.");
-                        if (!(directNativeFbxAttributes && directReplacedParts != null &&
-                              directReplacedParts.Contains(sp.name + "_" + i)))
-                        {
-                            Buffer.BlockCopy(original, sp.auxStart + closest * 12, auxiliary, v * 12, 12);
-                            Buffer.BlockCopy(original, sp.weightStart + closest * 8, weights, v * 8, 8);
-                        }
+                        Buffer.BlockCopy(original, sp.auxStart + closest * 12, auxiliary, v * 12, 12);
+                        Buffer.BlockCopy(original, sp.weightStart + closest * 8, weights, v * 8, 8);
                         int oldUvByte = nextUV + closest * 8;
                         if (oldUvByte < 0 || oldUvByte > original.Length - 8)
                             throw new InvalidDataException(sp.name + ": UV source block overflow.");
                         Buffer.BlockCopy(original, oldUvByte, uvData, v * 8, 8);
                     }
-                    bool directChangedPart = directReplacedParts == null ||
-                        directReplacedParts.Contains(sp.name + "_" + i);
-                    if (directNativeFbxAttributes && directChangedPart)
+                    if (nativePart)
                     {
                         WriteNativeFbxNormals(auxiliary, mesh, swap, n, sp.name);
                         WriteNativeFbxSkinWeights(weights, mesh, originalDocument, sp, original, n);
@@ -604,7 +611,8 @@ namespace MusafirEx.EMD2Unity
                         }
                     }
                     byte[] originalIndices = Slice(original, sp.indexStart, sp.indices * 2);
-                    if (n == sp.vertices && indices.Length == originalIndices.Length &&
+                    if (!nativePart && n == sp.vertices &&
+                        indices.Length == originalIndices.Length &&
                         Matches(indices, originalIndices) &&
                         Matches(positions, Slice(original, sp.vertexStart, n * 12)))
                     {
@@ -670,7 +678,8 @@ namespace MusafirEx.EMD2Unity
                     if (maximumTransfer > 0.05f) transferWarnings++;
                     report.AppendLine(sp.name + ": " + sp.vertices + " -> " + n +
                         " vertices; " + (sp.indices / 3) + " -> " + (triangles.Length / 3) +
-                        " triangles; donor max distance=" + maximumTransfer.ToString("G5"));
+                        (nativePart ? " triangles; FBX normals and weights (no donor lookup)"
+                            : " triangles; donor max distance=" + maximumTransfer.ToString("G5")));
                     int oldUVBytes = sp.vertices * 8;
                     byte[] oldUvBlock = Slice(original, nextUV,
                         Align(nextUV + oldUVBytes, 16) - nextUV);
@@ -719,7 +728,8 @@ namespace MusafirEx.EMD2Unity
                 report.AppendLine("New SHA256: " + Sha(result));
                 report.AppendLine("Reimport parser: PASS (" + parsed.Groups.Count + " groups)");
                 report.AppendLine("Groups with changed vertex/triangle counts: " + changedTopology);
-                report.AppendLine("Mesh groups with max donor displacement > 0.05: " + transferWarnings);
+                if (!directNativeFbxAttributes)
+                    report.AppendLine("Mesh groups with max donor displacement > 0.05: " + transferWarnings);
                 report.AppendLine(directNativeFbxAttributes
                     ? "FBX native attributes: normals encoded as 3 big-endian float32 values; " +
                       "FBX weights encoded as 4 EMD bone-ID/weight pairs per vertex on replaced groups."
