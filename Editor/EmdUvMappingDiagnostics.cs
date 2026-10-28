@@ -209,22 +209,16 @@ namespace MusafirEx.EMD2Unity
             report.AppendLine("EMD2Unity UV Mapping Audit (read-only)");
             report.AppendLine("EMD: " + path);
             var importer = AssetImporter.GetAtPath(path) as EmdImporter;
-            bool preserveZero = false;
-            bool align16 = false;
-            bool rgbaLast = false;
-            if (importer != null)
-            {
-                SerializedObject so = new SerializedObject(importer);
-                SerializedProperty preserve = so.FindProperty("preserveZeroUvWords");
-                if (preserve != null) preserveZero = preserve.boolValue;
-                SerializedProperty alignment = so.FindProperty("alignUvBlocksTo16");
-                if (alignment != null) align16 = alignment.boolValue;
-                SerializedProperty vertexColorMode = so.FindProperty("vertexColorsRgbaLast");
-                if (vertexColorMode != null) rgbaLast = vertexColorMode.boolValue;
-            }
+            bool autoStagePreset = importer != null && importer.IsUsingStageDefaults;
+            bool preserveZero = importer != null && importer.EffectivePreserveZeroUvWords;
+            bool align16 = importer != null && importer.EffectiveAlignUvBlocksTo16;
+            bool rgbaLast = importer != null && importer.EffectiveVertexColorsRgbaLast;
+            report.AppendLine("Automatic STG Import Defaults: " + autoStagePreset);
             report.AppendLine("Current Preserve Zero UV Words: " + preserveZero);
             report.AppendLine("Current Align UV Blocks to 16 Bytes: " + align16);
             report.AppendLine("Current Stage Vertex Colors Are RGBA: " + rgbaLast);
+            report.AppendLine("The current-mode lines reflect the effective import settings, " +
+                "including the automatic STG preset rather than any dormant manual values.");
             report.AppendLine("UV source pairs are decoded as big-endian half-floats. " +
                 "Default UV0 uses source channel 0 (strides 8..16) or " +
                 "source channel 3 (strides 20..28).");
