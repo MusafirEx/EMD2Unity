@@ -14,6 +14,7 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private GameObject emd;
         [SerializeField] private int motionId = -1;
         [SerializeField] private bool deltaRotationFirst;
+        [SerializeField] private bool allowPartialPreview;
         [SerializeField] private bool loop = true;
         [SerializeField] private float speed = 1f;
         [SerializeField] private float time;
@@ -24,6 +25,7 @@ namespace MusafirEx.EMD2Unity
         private Bounds bounds;
         private float duration;
         private bool playing;
+        private bool partialPreviewLoaded;
         private double lastTime;
         private float yaw = -25f, pitch = 15f, zoom = 1.35f;
         private string feedback = "Choose a PEMT, a matching EMD and a Motion ID, then Build Preview.";
@@ -97,6 +99,7 @@ namespace MusafirEx.EMD2Unity
                 clip = null;
             }
             duration = 0f;
+            partialPreviewLoaded = false;
         }
 
         private void ResetPreview()
@@ -133,8 +136,21 @@ namespace MusafirEx.EMD2Unity
                 throw new InvalidOperationException("Select a PEMT, matching EMD, and Motion ID.");
             try
             {
-                // Decoder checks the imported rig and resolves linked prefab instances.
-                clip = PemtAnimationClipExporter.CreateTransientClip(pemt, selected, emd, deltaRotationFirst);
+                // Decoder checks imported rig and resolves linked prefab instances.
+                // Unknown markers are skipped only with explicit Preview opt-in.
+                var skipped = new List<string>();
+                clip = PemtAnimationClipExporter.CreateTransientClip(
+                    pemt, selected, emd, deltaRotationFirst,
+                    allowPartialPreview, skipped);
+                partialPreviewLoaded = skipped.Count > 0;
+                if (partialPreviewLoaded)
+                {
+                    Debug.LogWarning("EMD2Unity PEMT PARTIAL PREVIEW: " +
+                        AssetDatabase.GetAssetPath(pemt) + " | Motion " +
+                        selected.motionIdHex + " (" + selected.motionId + ") skipped " +
+                        skipped.Count + " unsupported track(s). The pose is incomplete.\n" +
+                        string.Join("\n", skipped.ToArray()));
+                }
                 clip.hideFlags = HideFlags.HideAndDontSave;
                 GameObject source = PemtAnimationClipExporter.GetSourceEmdModel(emd);
                 utility = new PreviewRenderUtility();
@@ -151,6 +167,11 @@ namespace MusafirEx.EMD2Unity
                 bounds = CalculateBounds(modelCopy);
                 feedback = "Loaded " + selected.motionIdHex + " | " +
                     duration.ToString("F3") + " s | 60 Hz keyframe timing";
+                if (partialPreviewLoaded)
+                    feedback += "\nPARTIAL PREVIEW: " + skipped.Count +
+                        " unsupported track(s) skipped. Some bones/channels remain " +
+                        "at rest pose; this is NOT a complete animation. " +
+                        "See Console or Copy Motion Track Report for details.";
             }
             catch
             {
@@ -239,6 +260,17 @@ namespace MusafirEx.EMD2Unity
             }
             bool first = EditorGUILayout.Toggle("Delta Rotation First", deltaRotationFirst);
             if (first != deltaRotationFirst) { deltaRotationFirst = first; ResetPreview(); }
+            bool partial = EditorGUILayout.ToggleLeft(
+                "Allow Partial Preview (skip unsupported track markers)", allowPartialPreview);
+            if (partial != allowPartialPreview) { allowPartialPreview = partial; ResetPreview(); }
+            if (allowPartialPreview)
+                EditorGUILayout.HelpBox(
+                    "Preview ONLY. Unknown marker tracks such as 0x02040022 " +
+                    "are omitted; missing channels stay at imported rest pose. " +
+                    "Export Selected and Export All always reject unsupported tracks.",
+                    MessageType.Warning);
+            if (GUILayout.Button("Copy Motion Track Report (hex / offsets)"))
+                PemtMotionTrackDiagnostics.CopyAndLog(pemt, motions[current]);
             using (new EditorGUI.DisabledScope(emd == null))
             {
                 if (GUILayout.Button("Build / Refresh Preview", GUILayout.Height(27f)))
@@ -342,7 +374,8 @@ namespace MusafirEx.EMD2Unity
             DrawPlayback();
             Rect rect = GUILayoutUtility.GetRect(1f, 300f, GUILayout.ExpandWidth(true));
             DrawModel(rect);
-            EditorGUILayout.HelpBox(feedback, MessageType.Info);
+            EditorGUILayout.HelpBox(feedback,
+                partialPreviewLoaded ? MessageType.Warning : MessageType.Info);
             EditorGUILayout.LabelField("Drag to orbit, mouse wheel to zoom. Only a disposable preview copy is animated; no Scene changes or .anim files.", EditorStyles.wordWrappedMiniLabel);
         }
     }
