@@ -16,7 +16,7 @@ using UnityEngine.Rendering;
 
 namespace MusafirEx.EMD2Unity
 {
-    [ScriptedImporter(11, "emd")]
+    [ScriptedImporter(12, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         [Header("Model")]
@@ -237,22 +237,40 @@ namespace MusafirEx.EMD2Unity
                             .Where(t => !string.IsNullOrEmpty(t) &&
                                 t.EndsWith("_CO", StringComparison.OrdinalIgnoreCase))
                             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-                        if (candidates.Count == 1)
+                        string matchedColour = FindMatchingMaterialColour(info.Name, candidates);
+                        string chosenColour = candidates.Count == 1 ? candidates[0] : matchedColour;
+                        if (!string.IsNullOrEmpty(chosenColour))
                         {
-                            ctx.LogImportWarning("EMD material '" + info.Name +
-                                "' switched diffuse from auxiliary texture '" + texName +
-                                "' to uniquely referenced colour '" + candidates[0] +
-                                "'. Disable Prefer Unique _CO for Diffuse to preserve " +
-                                "the original first-submaterial behaviour.");
-                            texName = candidates[0];
+                            // Only switch to an explicitly referenced texture
+                            // that Unity can actually load (no unimportable DDS).
+                            bool loadable = FindTextureCandidates(ctx.assetPath, chosenColour)
+                                .Any(p => AssetDatabase.LoadAssetAtPath<Texture2D>(p) != null);
+                            if (loadable)
+                            {
+                                ctx.LogImportWarning("EMD material '" + info.Name +
+                                    "' switched diffuse from auxiliary '" + texName +
+                                    "' to " + (candidates.Count == 1 ?
+                                        "unique" : "material-name-matched") +
+                                    " referenced colour '" + chosenColour +
+                                    "'. For layered STG materials this is only a " +
+                                    "single-texture fallback. Disable Prefer Referenced " +
+                                    "_CO for Diffuse to restore the original binding.");
+                                texName = chosenColour;
+                            }
+                            else
+                                ctx.LogImportWarning("EMD material '" + info.Name +
+                                    "' has referenced colour '" + chosenColour +
+                                    "' but it is not a loadable local Texture2D. " +
+                                    "Kept the original auxiliary binding.");
                         }
                         else if (candidates.Count > 1)
                         {
                             ctx.LogImportWarning("EMD material '" + info.Name +
-                                "' has ambiguous _CO alternatives for auxiliary " +
-                                "diffuse '" + texName + "': " +
+                                "' has " + candidates.Count + " referenced _CO variants " +
+                                "without an exact material-stem match: " +
                                 string.Join(", ", candidates.ToArray()) +
-                                ". Kept original binding; use Diagnose EMD Texture Bindings.");
+                                ". Kept original binding to avoid guessing. " +
+                                "Use Diagnose EMD Texture Bindings.");
                         }
                     }
                     if (string.IsNullOrWhiteSpace(texName) || texName == "null")
@@ -500,6 +518,27 @@ namespace MusafirEx.EMD2Unity
         // EMAT v1 discovery only: the observed files use the "TAME" byte order and
         // hold null-terminated texture names. We do not infer sampler order, UV sets,
         // render states or shader parameters from these strings.
+        // A material such as stg31_ground02_BL can explicitly reference
+        // both ground02_CO and ground03_CO. Choose its own ground02_CO as
+        // the provisional diffuse, never the first arbitrary _CO variant.
+        // No global filename search and no guess for unrelated names.
+        internal static string FindMatchingMaterialColour(
+            string materialName, IEnumerable<string> referencedColours)
+        {
+            if (string.IsNullOrWhiteSpace(materialName) || referencedColours == null)
+                return null;
+            string baseName = Regex.Replace(materialName,
+                @"_(?:BL|LI|SP|NO)\d*$", "", RegexOptions.IgnoreCase);
+            if (baseName == materialName || baseName.Length == 0) return null;
+            string expected = baseName + "_CO";
+            var matches = referencedColours
+                .Where(s => !string.IsNullOrWhiteSpace(s) &&
+                    s.Equals(expected, StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(2).ToArray();
+            return matches.Length == 1 ? matches[0] : null;
+        }
+
         internal static bool IsAuxiliaryTextureName(string textureName)
         {
             if (string.IsNullOrWhiteSpace(textureName)) return false;
