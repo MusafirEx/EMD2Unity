@@ -116,6 +116,12 @@ namespace MusafirEx.EMD2Unity
             }
             maxDonorDistance = EditorGUILayout.FloatField(
                 "Max preview donor distance (Unity units)", maxDonorDistance);
+            EditorGUILayout.HelpBox(
+                "A failed donor-distance check may mean the FBX is offset, scaled, rotated, " +
+                "or intentionally larger than the native EMD. Use Analyze Mapping Distances " +
+                "before raising the threshold. The next Topology Rebuild window has a " +
+                "SEPARATE Maximum donor distance setting in EMD model units.",
+                MessageType.Info);
             copyFbxVertexColors = EditorGUILayout.ToggleLeft(
                 "Use FBX vertex colors when present (preview; enable colors in exporter separately)",
                 copyFbxVertexColors);
@@ -147,6 +153,8 @@ namespace MusafirEx.EMD2Unity
                     EditorGUILayout.Space();
                     if (GUILayout.Button("Auto-map exact mesh names"))
                         AutoMap(emd, candidates);
+                    if (GUILayout.Button("Analyze Mapping Distances (read-only)"))
+                        AnalyzeMappedDistances(emd, candidates);
                     if (GUILayout.Button("Create Prepared Weapon Scene Copy"))
                         CreatePrepared(emd, candidates);
                 }
@@ -212,6 +220,131 @@ namespace MusafirEx.EMD2Unity
             }
             distance = Mathf.Sqrt(best);
             return id;
+        }
+
+        private void AnalyzeMappedDistances(List<Part> emd, List<Part> fbxs)
+        {
+            try
+            {
+                if (maxDonorDistance <= 0f || float.IsNaN(maxDonorDistance) ||
+                    float.IsInfinity(maxDonorDistance))
+                    throw new InvalidDataException("Set a finite, positive donor distance first.");
+                var sb = new StringBuilder();
+                sb.AppendLine("EMD2Unity FBX DONOR DISTANCE DIAGNOSTICS — READ ONLY");
+                sb.AppendLine("Source: " + AssetDatabase.GetAssetPath(sourceWeapon));
+                sb.AppendLine("FBX root: " + fbxRoot.name);
+                sb.AppendLine("Preparation limit: " + maxDonorDistance.ToString("G9") +
+                    " Unity units");
+                var importer = AssetImporter.GetAtPath(
+                    AssetDatabase.GetAssetPath(sourceWeapon)) as EmdImporter;
+                float scale = 1f;
+                if (importer != null)
+                {
+                    var properties = new SerializedObject(importer);
+                    var scaleProperty = properties.FindProperty("modelScale");
+                    if (scaleProperty != null && scaleProperty.floatValue > 0f)
+                        scale = scaleProperty.floatValue;
+                }
+                sb.AppendLine("Source EMD importer Model Scale: " + scale.ToString("G9"));
+                sb.AppendLine("Topology Rebuild compares raw EMD-space coordinates; " +
+                    "for equivalent radius divide the Unity-space threshold by Model Scale.");
+                int groups = 0;
+                for (int i = 0; i < emd.Count; i++)
+                {
+                    int assigned = selections[i];
+                    if (assigned == 0) continue;
+                    if (assigned < 1 || assigned > fbxs.Count)
+                        throw new InvalidDataException("Invalid mapping at " + emd[i].name);
+                    Part target = emd[i], candidate = fbxs[assigned - 1];
+                    if (!target.mesh.isReadable || !candidate.mesh.isReadable)
+                        throw new InvalidDataException(target.name +
+                            ": source or FBX mesh is not readable.");
+                    Vector3[] oldVerts = target.mesh.vertices;
+                    Vector3[] newVerts = candidate.mesh.vertices;
+                    if (oldVerts.Length == 0 || newVerts.Length == 0)
+                        throw new InvalidDataException(target.name + ": empty vertex data.");
+                    Matrix4x4 transform = fbxRoot.transform.worldToLocalMatrix *
+                        candidate.transform.localToWorldMatrix;
+                    float maxDist = 0f, sum = 0f;
+                    int maxVertex = -1, maxDonor = -1, overLimit = 0, overRebuildDefault = 0;
+                    var distances = new float[newVerts.Length];
+                    Vector3 sourceMin = new Vector3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
+                    Vector3 sourceMax = new Vector3(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity);
+                    Vector3 editedMin = sourceMin, editedMax = sourceMax;
+                    foreach (Vector3 v in oldVerts)
+                    {
+                        sourceMin = Vector3.Min(sourceMin, v);
+                        sourceMax = Vector3.Max(sourceMax, v);
+                    }
+                    for (int v = 0; v < newVerts.Length; v++)
+                    {
+                        Vector3 pos = transform.MultiplyPoint3x4(newVerts[v]);
+                        if (!Finite(pos))
+                            throw new InvalidDataException(target.name +
+                                ": non-finite vertex at " + v);
+                        editedMin = Vector3.Min(editedMin, pos);
+                        editedMax = Vector3.Max(editedMax, pos);
+                        float distance;
+                        int donor = ClosestVertex(pos, oldVerts, out distance);
+                        distances[v] = distance;
+                        sum += distance;
+                        if (distance > maxDonorDistance) overLimit++;
+                        if (distance / scale > 0.5f) overRebuildDefault++;
+                        if (distance > maxDist)
+                        {
+                            maxDist = distance;
+                            maxVertex = v;
+                            maxDonor = donor;
+                        }
+                    }
+                    Array.Sort(distances);
+                    float percentile95 = distances[Mathf.Clamp(
+                        Mathf.CeilToInt(distances.Length * 0.95f) - 1,
+                        0, distances.Length - 1)];
+                    Vector3 sourceCentre = (sourceMin + sourceMax) * 0.5f;
+                    Vector3 editCentre = (editedMin + editedMax) * 0.5f;
+                    sb.AppendLine();
+                    sb.AppendLine(target.name + " <= " + candidate.name);
+                    sb.AppendLine("  Vertices: source=" + oldVerts.Length +
+                        ", FBX=" + newVerts.Length);
+                    sb.AppendLine("  Maximum nearest-donor distance: " +
+                        maxDist.ToString("G9") + " Unity units at FBX vertex #" + maxVertex +
+                        " (donor #" + maxDonor + ")");
+                    sb.AppendLine("  Mean / p95 nearest-donor distance: " +
+                        (sum / newVerts.Length).ToString("G6") + " / " +
+                        percentile95.ToString("G6") + " Unity units");
+                    sb.AppendLine("  Vertices beyond Preparation limit: " + overLimit);
+                    sb.AppendLine("  Vertices beyond Topology Rebuild default 0.5 raw EMD units: " +
+                        overRebuildDefault);
+                    sb.AppendLine("  Source bounds centre/size: " +
+                        sourceCentre.ToString("F4") + " / " +
+                        (sourceMax - sourceMin).ToString("F4"));
+                    sb.AppendLine("  FBX bounds centre/size (baked): " +
+                        editCentre.ToString("F4") + " / " +
+                        (editedMax - editedMin).ToString("F4"));
+                    sb.AppendLine("  Bounds-centre separation: " +
+                        Vector3.Distance(editCentre, sourceCentre).ToString("G6") +
+                        " Unity units");
+                    sb.AppendLine("  Largest required rebuild donor radius: " +
+                        (maxDist / scale).ToString("G9") + " raw EMD units");
+                    if (overLimit > 0)
+                        sb.AppendLine("  ACTION: Inspect FBX position/scale/axis and intended shape. " +
+                            "Raise donor distance only if original bone assignment is suitable.");
+                    groups++;
+                }
+                if (groups == 0)
+                    throw new InvalidDataException("Map at least one FBX mesh to an original part.");
+                sb.AppendLine();
+                sb.AppendLine("This report does not change meshes, scene objects or files.");
+                sb.AppendLine("EXPERIMENTAL WARNING: Distance alone does NOT prove skin weights are correct.");
+                report = sb.ToString();
+                Debug.Log(report);
+            }
+            catch (Exception ex)
+            {
+                report = "FBX donor distance diagnostics failed: " + ex.Message;
+                Debug.LogError("EMD2Unity FBX donor diagnostics: " + ex);
+            }
         }
 
         private void CreatePrepared(List<Part> emd, List<Part> fbxs)
@@ -295,8 +428,11 @@ namespace MusafirEx.EMD2Unity
                         if (distance > maxDonorDistance)
                             throw new InvalidDataException(original.name + ": transformed vertex " + v +
                                 " is " + distance.ToString("G5") +
-                                " Unity units from its closest original vertex. " +
-                                "Cannot reliably transfer original EMD rig attributes.");
+                                " Unity units from its closest original vertex (current limit " +
+                                maxDonorDistance.ToString("G5") + "). " +
+                                "Use Analyze Mapping Distances to inspect bounds/scale, then " +
+                                "increase the threshold only if transferring donor skinning is appropriate. " +
+                                "Topology Rebuild also has its own donor distance limit.");
                         maximumDistance = Mathf.Max(maximumDistance, distance);
                         bones[v] = originalWeights[donor];
                         colors[v] = hasFbColors ? fbColors[v] :
