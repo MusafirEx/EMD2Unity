@@ -13,6 +13,7 @@ namespace MusafirEx.EMD2Unity
     internal static class PemtAnimationClipExporter
     {
         private const uint Position = 0x02040021;
+        private const uint ExperimentalScale = 0x02040022;
         private const uint Rotation = 0x02040028;
 
         private static uint Be32(byte[] b, int p)
@@ -72,6 +73,24 @@ namespace MusafirEx.EMD2Unity
             Curve(clip,path,"m_LocalPosition.y",time,y);
             Curve(clip,path,"m_LocalPosition.z",time,z);
         }
+        private static void WriteScale(AnimationClip clip, string path, float[] time, Vector3[] values)
+        {
+            float[] x = new float[values.Length], y = new float[values.Length], z = new float[values.Length];
+            for (int i = 0; i < values.Length; i++)
+            {
+                x[i] = values[i].x;
+                y[i] = values[i].y;
+                z[i] = values[i].z;
+            }
+            Curve(clip, path, "m_LocalScale.x", time, x);
+            Curve(clip, path, "m_LocalScale.y", time, y);
+            Curve(clip, path, "m_LocalScale.z", time, z);
+        }
+        private static bool Finite(float v)
+        {
+            return !float.IsNaN(v) && !float.IsInfinity(v);
+        }
+
         private static void WriteRotation(AnimationClip clip,string path,float[] time,Quaternion[] vals)
         {
             float[] x=new float[vals.Length],y=new float[vals.Length],z=new float[vals.Length],w=new float[vals.Length];
@@ -118,7 +137,8 @@ namespace MusafirEx.EMD2Unity
         // transient clip, never from exported .anim assets.
         internal static AnimationClip CreateTransientClip(PemtMotionLibrary lib,
             PemtMotionMetadata motion, GameObject model, bool rotateFirst,
-            bool allowPartialPreview = false, List<string> skippedTracks = null)
+            bool allowPartialPreview = false, List<string> skippedTracks = null,
+            bool experimentalScalePreview = false, List<string> experimentalTracks = null)
         {
             if(lib==null||motion==null||model==null)throw new ArgumentException("Select a PEMT motion and an EMD model.");
             // The Inspector may hold either an EMD Project asset or a scene prefab
@@ -155,7 +175,8 @@ namespace MusafirEx.EMD2Unity
                     activeTrack = track;
                     uint kind=Convert.ToUInt32(track.markerHex.Substring(2),16);
                     if(kind==0x40)continue;
-                    if(kind!=Position && kind!=Rotation)
+                    bool decodeExperimentalScale = experimentalScalePreview && kind == ExperimentalScale;
+                    if(kind!=Position && kind!=Rotation && !decodeExperimentalScale)
                     {
                         string description = PemtMotionTrackDiagnostics.TrackSummary(motion, track);
                         if (allowPartialPreview)
@@ -199,6 +220,39 @@ namespace MusafirEx.EMD2Unity
                             pos[k]=joint.localPosition+delta*scale;
                         }
                         WritePosition(clip,path,time,pos);
+                    }
+                    else if (decodeExperimentalScale)
+                    {
+                        // HYPOTHESIS ONLY: marker 0x02040022 is an XYZ scale
+                        // multiplier in 3 big-endian float16 values followed by
+                        // one zero float16 padding word. The observed DRV02
+                        // Motion 0x100 / joint j320 is (0,1,1,0).
+                        Vector3[] values = new Vector3[count];
+                        for (int k = 0; k < count; k++)
+                        {
+                            int p = valuesAt + k * 8;
+                            float x = Half(b, p), y = Half(b, p + 2);
+                            float z = Half(b, p + 4), padding = Half(b, p + 6);
+                            if (!Finite(x) || !Finite(y) || !Finite(z) ||
+                                !Finite(padding) || Mathf.Abs(padding) > 1e-6f ||
+                                Mathf.Abs(x) > 4096f || Mathf.Abs(y) > 4096f ||
+                                Mathf.Abs(z) > 4096f)
+                                throw new InvalidDataException(
+                                    "Experimental 0x02040022 scale hypothesis rejected " +
+                                    "for bone j" + jointId + " key " + k +
+                                    " (non-finite, nonzero padding or extreme XYZ).");
+                            Vector3 xyz = swap ? new Vector3(x, z, y) : new Vector3(x, y, z);
+                            values[k] = Vector3.Scale(joint.localScale, xyz);
+                            if (!Finite(values[k].x) || !Finite(values[k].y) ||
+                                !Finite(values[k].z))
+                                throw new InvalidDataException(
+                                    "Experimental 0x02040022 scale produced invalid XYZ on bone j" + jointId);
+                        }
+                        WriteScale(clip, path, time, values);
+                        if (experimentalTracks != null)
+                            experimentalTracks.Add(
+                                PemtMotionTrackDiagnostics.TrackSummary(motion, track) +
+                                " | interpreted as LOCAL SCALE MULTIPLIER (UNVERIFIED)");
                     }
                     else
                     {
