@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased (experimental branch) — FBX donor-distance diagnostics
+
+- When Blender/FBX replacement mesh vertices exceed native EMD nearest-donor safety distance (e.g. `handleblade_0 vertex 392` at 1.1426 vs default 1.0), **Weapon FBX Preparation** now offers **Analyze Mapping Distances (read-only)**.
+- Reports for each assigned mesh source/FBX bounds and centre shift, mean/p95/max nearest-original donor distances, index of the farthest donor/FBX vertex, and violations of both the Preparation limit and the separate Topology Rebuild 0.5 raw EMD-unit default. Includes source Model Scale and corresponding EMD-unit distance.
+- Better safety error text advises checking FBX transforms/scale before changing the threshold. No input meshes/EMD/FBX are edited by analysis; nearest-donor skinning remains experimental.
+
 ## Unreleased (experimental branch) — Phase 5A Blender/FBX weapon mesh preparation
 
 - Added **Weapon FBX Preparation (Experimental)** for arbitrary imported Blender/FBX mesh names mapped explicitly to existing EMD polygon slots, including nested FBX transform baking, mirrored-winding correction and UV0 validation.
