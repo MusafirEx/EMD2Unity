@@ -61,6 +61,15 @@ namespace MusafirEx.EMD2Unity
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("swapYAndZ"), new GUIContent("Convert PS3 Z-Up to Unity Y-Up"));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("reverseWinding"), new GUIContent("Reverse Triangle Winding"));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("useVertexColors"), new GUIContent("Preserve Vertex Colors"));
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("vertexColorsRgbaLast"),
+                        new GUIContent("Stage Vertex Colors Are RGBA (Experimental)"));
+                    EditorGUILayout.HelpBox(
+                        "Stage meshes like STG31/AREA02 have packed colors such as 4C 4C 4C FF. " +
+                        "RGBA reads this as grey with opaque alpha (76,76,76,255), while " +
+                        "legacy ARGB gives (76,76,255,76). Enable per EMD only after " +
+                        "checking the read-only UV audit. This does not change UVs, " +
+                        "textures, material bindings or original model files.",
+                        MessageType.Info);
                     EditorGUILayout.Space();
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("recoverSupportedPolygons"),
                         new GUIContent("Recover Supported Meshes (skip unsupported polygons)"));
