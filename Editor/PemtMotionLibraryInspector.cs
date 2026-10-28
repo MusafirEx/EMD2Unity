@@ -147,6 +147,19 @@ namespace MusafirEx.EMD2Unity
             EditorGUILayout.LabelField("Apparent duration", selected.apparentDurationSeconds.ToString("F6") + "s");
             EditorGUILayout.LabelField("Nominal frames at 60 Hz", selected.nominalFramesAt60Hz.ToString());
             EditorGUILayout.LabelField("Track count", selected.tracks.Count.ToString());
+            int unsupportedCount = 0;
+            foreach (PemtTrackMetadata tr in selected.tracks)
+                if (tr != null && PemtMotionTrackDiagnostics.IsUnsupported(tr.markerHex))
+                    unsupportedCount++;
+            if (unsupportedCount > 0)
+                EditorGUILayout.HelpBox(
+                    unsupportedCount + " unsupported track marker(s) in Motion " +
+                    selected.motionIdHex + ". Strict .anim export may fail. " +
+                    "Use Copy Motion Track Report to inspect raw bytes; " +
+                    "the Animation Preview window has an optional partial mode.",
+                    MessageType.Warning);
+            if (GUILayout.Button("Copy Selected Motion Track Report (hex / offsets)"))
+                PemtMotionTrackDiagnostics.CopyAndLog(library, selected);
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("3. Export Selected AnimationClip", EditorStyles.boldLabel);
             rotateDeltaFirst = EditorGUILayout.Toggle("Delta Rotation First", rotateDeltaFirst);
