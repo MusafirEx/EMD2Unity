@@ -166,11 +166,11 @@ namespace MusafirEx.EMD2Unity
         }
 
         private static EmdDocument AttemptParse(byte[] bytes, bool keepZeroWords,
-            StringBuilder report, string name)
+            bool align16, StringBuilder report, string name)
         {
             try
             {
-                EmdDocument doc = EmdParser.Parse(bytes, true, keepZeroWords);
+                EmdDocument doc = EmdParser.Parse(bytes, true, keepZeroWords, align16);
                 report.AppendLine(name + ": " + doc.Groups.Count +
                     " mesh groups; skipped polygon records=" + doc.SkippedPolygonCount);
                 return doc;
@@ -195,20 +195,25 @@ namespace MusafirEx.EMD2Unity
             report.AppendLine("EMD: " + path);
             var importer = AssetImporter.GetAtPath(path) as EmdImporter;
             bool preserveZero = false;
+            bool align16 = false;
             if (importer != null)
             {
                 SerializedObject so = new SerializedObject(importer);
-                SerializedProperty property = so.FindProperty("preserveZeroUvWords");
-                if (property != null) preserveZero = property.boolValue;
+                SerializedProperty preserve = so.FindProperty("preserveZeroUvWords");
+                if (preserve != null) preserveZero = preserve.boolValue;
+                SerializedProperty alignment = so.FindProperty("alignUvBlocksTo16");
+                if (alignment != null) align16 = alignment.boolValue;
             }
             report.AppendLine("Current Preserve Zero UV Words: " + preserveZero);
+            report.AppendLine("Current Align UV Blocks to 16 Bytes: " + align16);
             report.AppendLine("UV source pairs are decoded as big-endian half-floats. " +
                 "Default UV0 uses source channel 0 (strides 8..16) or " +
                 "source channel 3 (strides 20..28).");
             byte[] bytes = File.ReadAllBytes(path);
-            EmdDocument legacy = AttemptParse(bytes, false, report, "Legacy skip-zero alignment");
-            EmdDocument contiguous = AttemptParse(bytes, true, report, "Preserve-zero alignment");
-            EmdDocument chosen = preserveZero ? contiguous : legacy;
+            EmdDocument legacy = AttemptParse(bytes, false, false, report, "Legacy skip-zero alignment");
+            EmdDocument contiguous = AttemptParse(bytes, true, false, report, "Preserve-zero alignment");
+            EmdDocument aligned = AttemptParse(bytes, false, true, report, "16-byte aligned UV blocks");
+            EmdDocument chosen = align16 ? aligned : (preserveZero ? contiguous : legacy);
             EmdDocument alternate = preserveZero ? legacy : contiguous;
             if (chosen == null)
             {
@@ -236,7 +241,9 @@ namespace MusafirEx.EMD2Unity
                     (g.SourceUvChannels == null ? 0 : g.SourceUvChannels.Length) +
                     " | default source channel=" + primary);
                 report.AppendLine("  UV block start=0x" + g.UvStartOffset.ToString("X") +
-                    " | zero bytes skipped AFTER this block=" + g.UvSkippedZeroBytes);
+                    (align16 ? " | 16-byte padding AFTER this block=" :
+                        " | zero bytes skipped AFTER this block=") +
+                    g.UvSkippedZeroBytes);
                 report.AppendLine("  Group descriptor start: 0x" +
                     g.UvGroupHeaderOffset.ToString("X") +
                     " | raw UV pointer [+0x34]: 0x" +
@@ -252,9 +259,28 @@ namespace MusafirEx.EMD2Unity
                     ", file-UV-relative=" + PointerCandidate(pointerUvBaseRelative, g, bytes));
                 report.AppendLine("  Sequential UV block first 24 bytes: " +
                     HexAt(bytes, g.UvStartOffset, 24));
-                if (g.UvSkippedZeroBytes > 0)
+                if (g.UvSkippedZeroBytes > 0 && !align16)
                     report.AppendLine("  CHECK: zero words skipped between UV blocks; " +
                         "could be genuine padding OR valid leading coordinates.");
+                if (aligned != null && i < aligned.Groups.Count)
+                {
+                    EmdGroup fixedGroup = aligned.Groups[i];
+                    if (fixedGroup.Name == g.Name)
+                    {
+                        report.AppendLine("  Align-to-16 candidate: UV start=0x" +
+                            fixedGroup.UvStartOffset.ToString("X") +
+                            " | delta=" + (fixedGroup.UvStartOffset - g.UvStartOffset) +
+                            " bytes | next-block padding=" +
+                            fixedGroup.UvSkippedZeroBytes + " bytes");
+                        report.AppendLine("  Align-to-16 candidate UV0: " +
+                            Statistics(fixedGroup.UV));
+                        report.AppendLine("  Align-to-16 first vertex colour: " +
+                            (fixedGroup.Colors != null && fixedGroup.Colors.Length > 0 ?
+                                fixedGroup.Colors[0].ToString() : "(none)"));
+                    }
+                    else
+                        report.AppendLine("  Align-to-16 candidate: mesh order differs; comparison unavailable.");
+                }
                 if (alternate != null && i < alternate.Groups.Count)
                 {
                     EmdGroup other = alternate.Groups[i];
@@ -292,10 +318,10 @@ namespace MusafirEx.EMD2Unity
                 report.AppendLine("Limited report to first " + groups +
                     " groups of " + chosen.Groups.Count + ".");
             report.AppendLine("");
-            report.AppendLine("IMPORTANT: matching sequential UV start offsets do not " +
-                "prove that those offsets are correct. Descriptor raw pointers and the " +
-                "24-byte per-vertex layout need binary validation. Repeated NaNs and " +
-                "near-constant UVs can also indicate non-UV packed attributes.");
+            report.AppendLine("IMPORTANT: 16-byte alignment is a candidate layout " +
+                "supported by STG30/AREA00 hex evidence, not a verified universal EMD rule. " +
+                "Compare aligned UV0 and vertex colours for the affected meshes. " +
+                "Other EMD files may use different packing or layout.");
             report.AppendLine("If legacy and preserve-zero modes have the same UV starts " +
                 "for every mesh, changing Preserve Zero UV Words cannot fix those meshes. " +
                 "Skipped zeros after the final group do not affect any reported group.");
