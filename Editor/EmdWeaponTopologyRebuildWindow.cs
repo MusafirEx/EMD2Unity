@@ -18,6 +18,7 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private GameObject editedWeapon;
         [SerializeField] private bool preserveIndexAttributes = true;
         [SerializeField] private bool useEditedUv0 = false;
+        [SerializeField] private bool useEditedColors = false;
         [SerializeField] private float attributeTransferLimit = 0.5f;
         private string lastReport;
         private Vector2 scroll;
@@ -45,6 +46,8 @@ namespace MusafirEx.EMD2Unity
                 preserveIndexAttributes);
             useEditedUv0 = EditorGUILayout.ToggleLeft(
                 "Write edited mesh UV0 (experimental, 8-byte source layout only)", useEditedUv0);
+            useEditedColors = EditorGUILayout.ToggleLeft(
+                "Write edited mesh vertex colors (ARGB/RGBA source setting)", useEditedColors);
             attributeTransferLimit = Mathf.Max(0.0001f, EditorGUILayout.FloatField(
                 "Maximum donor distance (EMD model units)", attributeTransferLimit));
             using (new EditorGUI.DisabledScope(editedWeapon == null))
@@ -313,6 +316,8 @@ namespace MusafirEx.EMD2Unity
                 float scale = serialized.FindProperty("modelScale").floatValue;
                 bool swap = serialized.FindProperty("swapYAndZ").boolValue;
                 bool reverseWinding = serialized.FindProperty("reverseWinding").boolValue;
+                bool sourceColorsRgbaLast =
+                    serialized.FindProperty("vertexColorsRgbaLast").boolValue;
                 if (scale <= 0f || float.IsNaN(scale) || float.IsInfinity(scale) ||
                     float.IsNaN(attributeTransferLimit) || float.IsInfinity(attributeTransferLimit) ||
                     attributeTransferLimit <= 0f)
@@ -365,6 +370,7 @@ namespace MusafirEx.EMD2Unity
                     byte[] weights = new byte[n * 8];
                     byte[] uvData = new byte[n * 8];
                     Vector2[] meshUV = mesh.uv;
+                    Color32[] meshColors = mesh.colors32;
                     Vector3 min = new Vector3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
                     Vector3 max = new Vector3(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity);
                     float maximumTransfer = 0f;
@@ -400,6 +406,26 @@ namespace MusafirEx.EMD2Unity
                         {
                             W16(uvData, v * 8 + 4, EncodeHalf(meshUV[v].x));
                             W16(uvData, v * 8 + 6, EncodeHalf(1f - meshUV[v].y));
+                        }
+                    }
+                    if (useEditedColors)
+                    {
+                        if (meshColors == null || meshColors.Length != n)
+                            throw new InvalidDataException(sp.name + ": edited vertex colors missing.");
+                        for (int v = 0; v < n; v++)
+                        {
+                            int o = v * 8;
+                            Color32 c = meshColors[v];
+                            if (sourceColorsRgbaLast)
+                            {
+                                uvData[o] = c.r; uvData[o + 1] = c.g;
+                                uvData[o + 2] = c.b; uvData[o + 3] = c.a;
+                            }
+                            else
+                            {
+                                uvData[o] = c.a; uvData[o + 1] = c.r;
+                                uvData[o + 2] = c.g; uvData[o + 3] = c.b;
+                            }
                         }
                     }
                     byte[] originalIndices = Slice(original, sp.indexStart, sp.indices * 2);
@@ -492,6 +518,23 @@ namespace MusafirEx.EMD2Unity
                 EmdDocument parsed = EmdParser.Parse(result);
                 if (parsed.Groups.Count != polyCount)
                     throw new InvalidDataException("Rebuilt EMD parser group-count check failed.");
+                int validatedVertices = 0;
+                int validatedTriangles = 0;
+                for (int i = 0; i < polyCount; i++)
+                {
+                    var originalGroup = EmdParser.Parse(original).Groups[i];
+                    var newGroup = parsed.Groups[i];
+                    if (newGroup.Vertices.Length < 3 ||
+                        newGroup.Triangles.Length < 3 ||
+                        newGroup.Triangles.Length % 3 != 0 ||
+                        newGroup.MaterialIndex != originalGroup.MaterialIndex ||
+                        newGroup.Name != originalGroup.Name)
+                        throw new InvalidDataException("Reimport validation failed for mesh #" + i);
+                    validatedVertices += newGroup.Vertices.Length;
+                    validatedTriangles += newGroup.Triangles.Length / 3;
+                }
+                report.AppendLine("Validated parsed vertices: " + validatedVertices +
+                    ", triangles: " + validatedTriangles);
                 report.AppendLine("File: " + original.Length + " -> " + result.Length + " bytes");
                 report.AppendLine("New SHA256: " + Sha(result));
                 report.AppendLine("Reimport parser: PASS (" + parsed.Groups.Count + " groups)");
