@@ -290,7 +290,7 @@ namespace MusafirEx.EMD2Unity
                         sum += distance;
                         if (distance > maxDonorDistance) overLimit++;
                         if (distance / scale > 0.5f) overRebuildDefault++;
-                        if (distance > maxDist)
+                        if (maxVertex < 0 || distance > maxDist)
                         {
                             maxDist = distance;
                             maxVertex = v;
