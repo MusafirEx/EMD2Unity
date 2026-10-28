@@ -20,6 +20,8 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private bool bakeRootTransform = true;
         [SerializeField] private bool exportFbxUv0 = true;
         [SerializeField] private bool exportFbxColors = false;
+        [SerializeField] private bool exportNativeFbxAttributes = true;
+        [SerializeField] private int rigidUnskinnedBoneIndex = 0;
         [SerializeField] private int[] mapping = new int[32];
         private Vector2 scrollPosition;
         private string report;
@@ -36,6 +38,7 @@ namespace MusafirEx.EMD2Unity
             internal Transform transform;
             internal Mesh mesh;
             internal int subMesh;
+            internal SkinnedMeshRenderer skinned;
         }
 
         [MenuItem("Tools/EMD2Unity/Direct FBX to Weapon EMD (Experimental)")]
@@ -114,7 +117,8 @@ namespace MusafirEx.EMD2Unity
                             " [material slot " + submesh + "; mesh verts " + mesh.vertexCount + "]",
                         transform = child,
                         mesh = mesh,
-                        subMesh = submesh
+                        subMesh = submesh,
+                        skinned = skinned
                     });
                 }
             }
@@ -159,6 +163,16 @@ namespace MusafirEx.EMD2Unity
                 "Export FBX UV0 to EMD (recommended)", exportFbxUv0);
             exportFbxColors = EditorGUILayout.ToggleLeft(
                 "Export FBX vertex colors (only if provided)", exportFbxColors);
+            exportNativeFbxAttributes = EditorGUILayout.ToggleLeft(
+                "Encode FBX normals and skin weights DIRECTLY (no nearest donor)",
+                exportNativeFbxAttributes);
+            if (exportNativeFbxAttributes)
+                EditorGUILayout.HelpBox(
+                    "Game EMD stores each normal as XYZ float32 and each vertex's skinning " +
+                    "as four weight/bone-ID pairs. FBX bones must match existing EMD bone names. " +
+                    "An FBX with NO skin weights will be rigid-bound to the EMD bone selected below; " +
+                    "no original vertex data is borrowed for replaced geometry.",
+                    MessageType.Info);
             EditorGUILayout.HelpBox(
                 "A single FBX mesh with multiple material submeshes is treated as " +
                 "multiple selectable geometry entries. Assign FBX entries to existing " +
@@ -173,6 +187,21 @@ namespace MusafirEx.EMD2Unity
                             "Select an imported original _Wxx.emd, not the FBX or a scene copy.");
                     List<OriginalSlot> originals = GetOriginalSlots(originalEmd);
                     List<InputSlot> inputs = GetInputSlots(fbxSource);
+                    if (exportNativeFbxAttributes)
+                    {
+                        EmdDocument skeleton = EmdParser.Parse(
+                            File.ReadAllBytes(AssetDatabase.GetAssetPath(originalEmd)));
+                        if (skeleton.Bones.Count < 1)
+                            throw new InvalidDataException(
+                                "Original EMD contains no bones; native FBX bone export is unavailable.");
+                        string[] names = new string[skeleton.Bones.Count];
+                        for (int i = 0; i < names.Length; ++i)
+                            names[i] = i + ": " + skeleton.Bones[i].Name +
+                                " (node " + skeleton.Bones[i].NodeID + ")";
+                        rigidUnskinnedBoneIndex = EditorGUILayout.Popup(
+                            "Rigid bone for unskinned FBX",
+                            Mathf.Clamp(rigidUnskinnedBoneIndex, 0, names.Length - 1), names);
+                    }
                     if (inputs.Count == 0)
                         throw new InvalidDataException(
                             "FBX contains no triangle meshes (MeshFilter/SkinnedMeshRenderer).");
@@ -280,7 +309,8 @@ namespace MusafirEx.EMD2Unity
 
         private static Mesh BuildMappedMesh(
             InputSlot from, GameObject root, bool bakeRoot,
-            bool requireUv, bool requireColors)
+            bool requireUv, bool requireColors, bool nativeAttributes,
+            EmdDocument emd, int rigidBoneIndex)
         {
             Mesh source = from.mesh;
             if (!source.isReadable)
@@ -294,6 +324,40 @@ namespace MusafirEx.EMD2Unity
             Vector3[] inputVertices = source.vertices;
             Vector2[] inputUV = source.uv;
             Color32[] inputColors = source.colors32;
+            Vector3[] inputNormals = nativeAttributes ? source.normals : new Vector3[0];
+            BoneWeight[] originalFbxWeights = nativeAttributes ? source.boneWeights : new BoneWeight[0];
+            bool hasSkin = nativeAttributes && originalFbxWeights.Length == inputVertices.Length;
+            int[] fbxtoEmd = null;
+            if (hasSkin)
+            {
+                if (from.skinned == null || from.skinned.bones == null ||
+                    from.skinned.bones.Length == 0)
+                    throw new InvalidDataException(from.label +
+                        ": FBX has bone weights but SkinnedMeshRenderer.bones is missing. " +
+                        "Use a rigged FBX with named bones or remove skin weights for rigid binding.");
+                Transform[] fbxBones = from.skinned.bones;
+                fbxtoEmd = new int[fbxBones.Length];
+                for (int i = 0; i < fbxtoEmd.Length; ++i)
+                {
+                    fbxtoEmd[i] = -1;
+                    if (fbxBones[i] == null) continue;
+                    string name = fbxBones[i].name;
+                    for (int k = 0; k < emd.Bones.Count; ++k)
+                    {
+                        if (string.Equals(name, emd.Bones[k].Name,
+                            StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (fbxtoEmd[i] >= 0)
+                                throw new InvalidDataException(from.label +
+                                    ": duplicated original bone name: " + name);
+                            fbxtoEmd[i] = k;
+                        }
+                    }
+                }
+            }
+            if (nativeAttributes && !hasSkin &&
+                (rigidBoneIndex < 0 || rigidBoneIndex >= emd.Bones.Count))
+                throw new InvalidDataException("Select a valid EMD rigid bone.");
             if (requireUv && inputUV.Length != inputVertices.Length)
                 throw new InvalidDataException(from.label +
                     ": missing FBX UV0 on some/all vertices. " +
@@ -304,14 +368,17 @@ namespace MusafirEx.EMD2Unity
             Matrix4x4 frame = bakeRoot ?
                 from.transform.localToWorldMatrix :
                 root.transform.worldToLocalMatrix * from.transform.localToWorldMatrix;
-            if (!float.IsNaN(frame.determinant) &&
-                !float.IsInfinity(frame.determinant) &&
+            if (float.IsNaN(frame.determinant) ||
+                float.IsInfinity(frame.determinant) ||
                 Mathf.Abs(frame.determinant) < 1e-8f)
                 throw new InvalidDataException(from.label + ": zero-scale FBX transformation.");
             var oldToNew = new Dictionary<int, int>();
             var positions = new List<Vector3>();
             var uvs = new List<Vector2>();
             var colors = new List<Color32>();
+            var normals = new List<Vector3>();
+            var weights = new List<BoneWeight>();
+            Matrix4x4 normalTransform = frame.inverse.transpose;
             int[] indices = new int[inputIndices.Length];
             for (int i = 0; i < inputIndices.Length; i++)
             {
@@ -329,6 +396,59 @@ namespace MusafirEx.EMD2Unity
                     positions.Add(pos);
                     if (requireUv) uvs.Add(inputUV[old]);
                     if (requireColors) colors.Add(inputColors[old]);
+                    if (nativeAttributes)
+                    {
+                        Vector3 n = inputNormals.Length == inputVertices.Length ?
+                            normalTransform.MultiplyVector(inputNormals[old]) : Vector3.zero;
+                        normals.Add(n);
+                        BoneWeight w;
+                        if (hasSkin)
+                        {
+                            BoneWeight fbxWeight = originalFbxWeights[old];
+                            int[] ids =
+                            {
+                                fbxWeight.boneIndex0, fbxWeight.boneIndex1,
+                                fbxWeight.boneIndex2, fbxWeight.boneIndex3
+                            };
+                            float[] vals =
+                            {
+                                fbxWeight.weight0, fbxWeight.weight1,
+                                fbxWeight.weight2, fbxWeight.weight3
+                            };
+                            for (int k = 0; k < 4; ++k)
+                            {
+                                if (float.IsNaN(vals[k]) || float.IsInfinity(vals[k]) ||
+                                    vals[k] < 0f)
+                                    throw new InvalidDataException(from.label +
+                                        ": invalid FBX skin weights at vertex " + old);
+                                if (vals[k] <= 0f) { ids[k] = 0; continue; }
+                                if (ids[k] < 0 || ids[k] >= fbxtoEmd.Length ||
+                                    fbxtoEmd[ids[k]] < 0)
+                                    throw new InvalidDataException(from.label +
+                                        ": bone index " + ids[k] +
+                                        " at vertex " + old +
+                                        " has no matching original EMD bone name.");
+                                ids[k] = fbxtoEmd[ids[k]];
+                            }
+                            w = new BoneWeight
+                            {
+                                boneIndex0 = ids[0], boneIndex1 = ids[1],
+                                boneIndex2 = ids[2], boneIndex3 = ids[3],
+                                weight0 = vals[0], weight1 = vals[1],
+                                weight2 = vals[2], weight3 = vals[3]
+                            };
+                        }
+                        else
+                        {
+                            w = new BoneWeight
+                            {
+                                boneIndex0 = rigidBoneIndex, weight0 = 1f,
+                                boneIndex1 = rigidBoneIndex,
+                                boneIndex2 = rigidBoneIndex, boneIndex3 = rigidBoneIndex
+                            };
+                        }
+                        weights.Add(w);
+                    }
                 }
                 indices[i] = mapped;
             }
@@ -348,6 +468,27 @@ namespace MusafirEx.EMD2Unity
             mesh.triangles = indices;
             if (requireUv) mesh.uv = uvs.ToArray();
             if (requireColors) mesh.colors32 = colors.ToArray();
+            if (nativeAttributes)
+            {
+                bool missingNormals = inputNormals.Length != inputVertices.Length;
+                if (!missingNormals)
+                {
+                    foreach (Vector3 n in normals)
+                        if (!Finite(n) || n.sqrMagnitude < 1e-10f)
+                        {
+                            missingNormals = true;
+                            break;
+                        }
+                }
+                if (missingNormals) mesh.RecalculateNormals();
+                else
+                {
+                    for (int i = 0; i < normals.Count; ++i)
+                        normals[i] = normals[i].normalized;
+                    mesh.normals = normals.ToArray();
+                }
+                mesh.boneWeights = weights.ToArray();
+            }
             mesh.RecalculateBounds();
             return mesh;
         }
@@ -365,6 +506,9 @@ namespace MusafirEx.EMD2Unity
             var newMeshes = new List<Mesh>();
             try
             {
+                EmdDocument emd = exportNativeFbxAttributes ?
+                    EmdParser.Parse(File.ReadAllBytes(
+                        AssetDatabase.GetAssetPath(originalEmd))) : null;
                 var usedInputs = new HashSet<int>();
                 var replacement = new HashSet<string>();
                 var summary = new StringBuilder();
@@ -393,7 +537,9 @@ namespace MusafirEx.EMD2Unity
                     if (assigned == 0) continue;
                     InputSlot input = inputs[assigned - 1];
                     Mesh created = BuildMappedMesh(
-                        input, fbxSource, bakeRootTransform, exportFbxUv0, exportFbxColors);
+                        input, fbxSource, bakeRootTransform, exportFbxUv0,
+                        exportFbxColors, exportNativeFbxAttributes,
+                        emd, rigidUnskinnedBoneIndex);
                     newMeshes.Add(created);
                     sourceMeshes[i] = created;
                     replacement.Add(original[i].name);
@@ -419,11 +565,15 @@ namespace MusafirEx.EMD2Unity
                     else throw new InvalidDataException(
                         original[i].name + ": no MeshRenderer/MeshFilter in original EMD.");
                 }
-                summary.AppendLine("The game's original bone/material/opaque attributes " +
-                    "are retained/transferred from nearest original EMD vertices. " +
-                    "FBX armature and imported normals are not yet serialized into EMD.");
+                summary.AppendLine(exportNativeFbxAttributes
+                    ? "Native FBX geometry, normals and skin weights encoded into EMD. " +
+                      "FBX rig bone names matched to source EMD skeleton; " +
+                      "unskinned meshes rigid-bound to selected EMD bone. No nearest-vertex donor."
+                    : "Legacy mode: original EMD per-vertex normal/skin attributes " +
+                      "transferred from nearest original vertex.");
                 string result = EmdWeaponTopologyRebuildWindow.ExportDirectFromFbx(
-                    originalEmd, temporary, replacement, exportFbxUv0, exportFbxColors);
+                    originalEmd, temporary, replacement, exportFbxUv0,
+                    exportFbxColors, exportNativeFbxAttributes);
                 report = summary + "\n" + result;
                 Debug.Log(report);
             }
