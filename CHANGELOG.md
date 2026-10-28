@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased (experimental branch) — Phase 5C native FBX normals + weights
+
+- Direct FBX export defaults to **FBX-sourced normals and bone weights** instead of nearest original-vertex attributes for changed polygon groups. The existing in-game-accepted legacy donor method remains accessible by unchecking the new option.
+- Writes the 12-byte per-vertex normal stream as three big-endian float32 values, preserving proper FBX normal transforms and EMD Y/Z conversion.
+- Encodes bone weights from FBX rigged mesh influences as four EMD weight/bone ID byte pairs, inverting the parser's original group-specific node mapping. Normalized quantized weights sum to 255; unknown or unrepresentable FBX bone names cause a clear refusal rather than unsafe substitution.
+- Static/unskinned FBX meshes are assigned to a chosen source EMD bone. Optional Force rigid binding ignores an unrelated FBX skeleton.
+- Nearest original-vertex searches are completely bypassed for FBX-native replaced groups. FBX UV0 and vertex colors are directly written when selected, with opaque white neutral color otherwise. Unchanged EMD polygon groups keep original source bytes.
+- Prior direct FBX export is user-confirmed to load successfully in game; new attribute encoding awaits Unity and game verification.
+
 ## Unreleased (experimental branch) — Phase 5B one-window Direct FBX → EMD
 
 - Added **Direct FBX to Weapon EMD (Experimental)**, a one-window, one-click export from selected Blender/FBX geometry plus original `_Wxx.emd` template to a **new** `.emd`.
