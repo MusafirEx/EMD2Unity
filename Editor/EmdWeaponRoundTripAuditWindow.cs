@@ -229,8 +229,8 @@ namespace MusafirEx.EMD2Unity
                             if (a[o + k] != b[o + k]) { differs = true; break; }
                         Vector3 pa = new Vector3(BeF32(a, o), BeF32(a, o + 4), BeF32(a, o + 8));
                         Vector3 pb = new Vector3(BeF32(b, o), BeF32(b, o + 4), BeF32(b, o + 8));
-                        if (!float.IsFinite(pa.x) || !float.IsFinite(pa.y) || !float.IsFinite(pa.z) ||
-                            !float.IsFinite(pb.x) || !float.IsFinite(pb.y) || !float.IsFinite(pb.z))
+                        if ((float.IsNaN(pa.x) || float.IsInfinity(pa.x)) || (float.IsNaN(pa.y) || float.IsInfinity(pa.y)) || (float.IsNaN(pa.z) || float.IsInfinity(pa.z)) ||
+                            (float.IsNaN(pb.x) || float.IsInfinity(pb.x)) || (float.IsNaN(pb.y) || float.IsInfinity(pb.y)) || (float.IsNaN(pb.z) || float.IsInfinity(pb.z)))
                             throw new InvalidDataException(span.name + ": nonfinite vertex at index " + v);
                         if (!differs) continue;
                         changed++;
