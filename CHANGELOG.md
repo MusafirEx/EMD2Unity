@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.3 — experimental PEMT 0x02040022 scale-candidate preview
+
+- The DRV02/0000.pemt Motion 0x100 diagnostic identifies an unsupported track #56, info 0x01400001 (joint candidate j320, one key). Its payload at 0xAA80 is 00 00 3C 00 3C 00 00 00, which decodes as four big-endian float16 values (0, 1, 1, 0). It sits between position and rotation tracks for the same bone. **Scale XYZ plus padding is a hypothesis, not established format semantics.**
+- Added the **Experimental Scale 0x02040022 (Preview ONLY)** toggle, OFF by default, to isolated PEMT Animation Preview. It interprets the first three half-floats as X/Y/Z local-scale multipliers against imported bone scale, swaps Y/Z with the configured EMD axis conversion, and requires a zero fourth half-float, finite XYZ and bounded magnitudes.
+- The Preview window logs every experimental track with unchanged numeric Motion ID and joint candidate; a persistent warning explains that scale/channel semantics are unverified. The standard position/rotation decoder is unchanged.
+- Expanded **Copy Motion Track Report** with first four candidate half-float samples and times for 0x02040022 when key count and payload boundaries permit. The report remains read-only.
+- Export Selected and Export All **remain strict**, so no speculative scale animation is silently saved. Existing preview-only partial skipping continues to work separately.
+- No changes to EMD model import, Stage EMD, bone repair, SEQ or CCM. Unity compilation, visual scale behavior and source-format correctness remain to be tested.
+
+
 ## 0.5.2 — PEMT unsupported-track diagnostics and explicit partial preview
 
 - Added a read-only **Copy Motion Track Report (hex / offsets)** action in the PEMT Inspector and Animation Preview. Reports the selected asset, unchanged numeric Motion ID, each track index/marker/info words, candidate high/low parts, absolute and relative offsets, and bounded raw data at both pointer locations.
