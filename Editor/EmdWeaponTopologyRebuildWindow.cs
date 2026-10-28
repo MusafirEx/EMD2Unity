@@ -46,7 +46,10 @@ namespace MusafirEx.EMD2Unity
             useEditedUv0 = EditorGUILayout.ToggleLeft(
                 "Write edited mesh UV0 (experimental, 8-byte source layout only)", useEditedUv0);
             attributeTransferLimit = Mathf.Max(0.0001f, EditorGUILayout.FloatField(
-                "Maximum attribute transfer distance (Unity units)", attributeTransferLimit));
+                "Maximum donor distance (EMD model units)", attributeTransferLimit));
+            using (new EditorGUI.DisabledScope(editedWeapon == null))
+                if (GUILayout.Button("Add 1 Test Vertex + 1 Triangle to Editable handleblade"))
+                    AddControlledTopologyTest();
             EditorGUILayout.HelpBox(
                 "Each edited mesh must be a direct child named exactly as the imported EMD mesh " +
                 "(for DRV: handleblade_0, emblem_00_1, car_wild_2, car_vegas_3), " +
@@ -63,6 +66,60 @@ namespace MusafirEx.EMD2Unity
                 scroll = EditorGUILayout.BeginScrollView(scroll);
                 EditorGUILayout.TextArea(lastReport, GUILayout.ExpandHeight(true));
                 EditorGUILayout.EndScrollView();
+            }
+        }
+
+        private void AddControlledTopologyTest()
+        {
+            try
+            {
+                if (editedWeapon == null || !editedWeapon.scene.IsValid() ||
+                    !editedWeapon.scene.isLoaded || editedWeapon == sourceWeapon)
+                    throw new InvalidDataException(
+                        "Use an editable scene instance created by the Position Patch tool.");
+                Mesh mesh = FindEditedMesh(editedWeapon, "handleblade_0");
+                string path = AssetDatabase.GetAssetPath(mesh).Replace('\\', '/');
+                if (!path.StartsWith("Assets/EMD2Unity_Editable/", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException(
+                        "Only independent mesh .assets from Create Editable Weapon Copy are safe to modify.");
+                Vector3[] positions = mesh.vertices;
+                int[] indices = mesh.triangles;
+                if (positions.Length < 3 || indices.Length < 3)
+                    throw new InvalidDataException("Editable handleblade must contain triangles.");
+                int oldCount = positions.Length;
+                Array.Resize(ref positions, oldCount + 1);
+                positions[oldCount] = positions[0] + new Vector3(0.05f, 0f, 0f);
+                Vector2[] uv = mesh.uv;
+                Color32[] color = mesh.colors32;
+                BoneWeight[] weights = mesh.boneWeights;
+                Vector3[] normals = mesh.normals;
+                if (uv.Length != 0) { Array.Resize(ref uv, oldCount + 1); uv[oldCount] = uv[0]; }
+                if (color.Length != 0) { Array.Resize(ref color, oldCount + 1); color[oldCount] = color[0]; }
+                if (weights.Length != 0) { Array.Resize(ref weights, oldCount + 1); weights[oldCount] = weights[0]; }
+                if (normals.Length != 0) { Array.Resize(ref normals, oldCount + 1); normals[oldCount] = normals[0]; }
+                Array.Resize(ref indices, indices.Length + 3);
+                indices[indices.Length - 3] = oldCount;
+                indices[indices.Length - 2] = indices[1];
+                indices[indices.Length - 1] = indices[2];
+                Undo.RecordObject(mesh, "EMD topology test: one vertex and triangle");
+                mesh.vertices = positions;
+                if (uv.Length != 0) mesh.uv = uv;
+                if (color.Length != 0) mesh.colors32 = color;
+                if (weights.Length != 0) mesh.boneWeights = weights;
+                if (normals.Length != 0) mesh.normals = normals;
+                mesh.triangles = indices;
+                mesh.RecalculateBounds();
+                EditorUtility.SetDirty(mesh);
+                AssetDatabase.SaveAssets();
+                lastReport = "Controlled topology test: handleblade_0 now has " +
+                    positions.Length + " vertices and " + indices.Length / 3 +
+                    " triangles; exactly +1 vertex and +1 face. Rebuild to a NEW EMD file.";
+                Debug.Log("EMD2Unity topology test: " + lastReport);
+            }
+            catch (Exception ex)
+            {
+                lastReport = "Topology test refused: " + ex.Message;
+                Debug.LogError("EMD2Unity topology test: " + ex);
             }
         }
 
@@ -319,14 +376,14 @@ namespace MusafirEx.EMD2Unity
                         WriteF32(positions, v * 12 + 4, p.y);
                         WriteF32(positions, v * 12 + 8, p.z);
                         min = Vector3.Min(min, p); max = Vector3.Max(max, p);
-                        float nearestDistance;
+                        float nearestDistance = 0f;
                         int closest = preserveOrder ? v : ClosestVertex(p, oldCoords, out nearestDistance);
                         if (preserveOrder) nearestDistance = (p - oldCoords[v]).magnitude;
                         if (nearestDistance > maximumTransfer) maximumTransfer = nearestDistance;
                         if (nearestDistance > attributeTransferLimit)
                             throw new InvalidDataException(sp.name + ": vertex " + v +
                                 " is " + nearestDistance.ToString("G5") +
-                                " Unity-source-space units away from original attribute donor " +
+                                " EMD model units away from original attribute donor " +
                                 closest + ". Increase transfer limit ONLY if deliberate.");
                         Buffer.BlockCopy(original, sp.auxStart + closest * 12, auxiliary, v * 12, 12);
                         Buffer.BlockCopy(original, sp.weightStart + closest * 8, weights, v * 8, 8);
