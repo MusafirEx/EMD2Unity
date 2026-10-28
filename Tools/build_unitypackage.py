@@ -17,6 +17,7 @@ FILES = (
     "Editor/EmdWeaponRoundTripAuditWindow.cs",
     "Editor/EmdWeaponTopologyRebuildWindow.cs",
     "Editor/EmdWeaponFbxPreparationWindow.cs",
+    "Editor/EmdDirectFbxExportWindow.cs",
     "Editor/StgDdsBatchRepairWindow.cs",
     "Editor/PemtImporter.cs",
     "Editor/PemtBinaryDiagnostics.cs",
