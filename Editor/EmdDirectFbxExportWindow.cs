@@ -22,6 +22,7 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private bool exportFbxColors = false;
         [SerializeField] private bool exportNativeFbxAttributes = true;
         [SerializeField] private int rigidUnskinnedBoneIndex = 0;
+        [SerializeField] private bool forceRigidBone = false;
         [SerializeField] private int[] mapping = new int[32];
         private Vector2 scrollPosition;
         private string report;
@@ -169,10 +170,13 @@ namespace MusafirEx.EMD2Unity
             if (exportNativeFbxAttributes)
                 EditorGUILayout.HelpBox(
                     "Game EMD stores each normal as XYZ float32 and each vertex's skinning " +
-                    "as four weight/bone-ID pairs. FBX bones must match existing EMD bone names. " +
-                    "An FBX with NO skin weights will be rigid-bound to the EMD bone selected below; " +
-                    "no original vertex data is borrowed for replaced geometry.",
+                    "as four weight/bone-ID pairs. FBX bone names must match original EMD " +
+                    "bone names. Unskinned FBX meshes use the selected rigid bone. " +
+                    "For unrelated FBX rigs, enable Force rigid binding.",
                     MessageType.Info);
+            if (exportNativeFbxAttributes)
+                forceRigidBone = EditorGUILayout.ToggleLeft(
+                    "Force rigid binding (ignore FBX armature/weights)", forceRigidBone);
             EditorGUILayout.HelpBox(
                 "A single FBX mesh with multiple material submeshes is treated as " +
                 "multiple selectable geometry entries. Assign FBX entries to existing " +
@@ -310,7 +314,7 @@ namespace MusafirEx.EMD2Unity
         private static Mesh BuildMappedMesh(
             InputSlot from, GameObject root, bool bakeRoot,
             bool requireUv, bool requireColors, bool nativeAttributes,
-            EmdDocument emd, int rigidBoneIndex)
+            EmdDocument emd, int rigidBoneIndex, bool forceRigid)
         {
             Mesh source = from.mesh;
             if (!source.isReadable)
@@ -326,7 +330,8 @@ namespace MusafirEx.EMD2Unity
             Color32[] inputColors = source.colors32;
             Vector3[] inputNormals = nativeAttributes ? source.normals : new Vector3[0];
             BoneWeight[] originalFbxWeights = nativeAttributes ? source.boneWeights : new BoneWeight[0];
-            bool hasSkin = nativeAttributes && originalFbxWeights.Length == inputVertices.Length;
+            bool hasSkin = nativeAttributes && !forceRigid &&
+                originalFbxWeights.Length == inputVertices.Length;
             int[] fbxtoEmd = null;
             if (hasSkin)
             {
@@ -539,7 +544,7 @@ namespace MusafirEx.EMD2Unity
                     Mesh created = BuildMappedMesh(
                         input, fbxSource, bakeRootTransform, exportFbxUv0,
                         exportFbxColors, exportNativeFbxAttributes,
-                        emd, rigidUnskinnedBoneIndex);
+                        emd, rigidUnskinnedBoneIndex, forceRigidBone);
                     newMeshes.Add(created);
                     sourceMeshes[i] = created;
                     replacement.Add(original[i].name);
@@ -568,7 +573,7 @@ namespace MusafirEx.EMD2Unity
                 summary.AppendLine(exportNativeFbxAttributes
                     ? "Native FBX geometry, normals and skin weights encoded into EMD. " +
                       "FBX rig bone names matched to source EMD skeleton; " +
-                      "unskinned meshes rigid-bound to selected EMD bone. No nearest-vertex donor."
+                      "unskinned/forced-rigid meshes bound to selected EMD bone. No nearest-vertex donor."
                     : "Legacy mode: original EMD per-vertex normal/skin attributes " +
                       "transferred from nearest original vertex.");
                 string result = EmdWeaponTopologyRebuildWindow.ExportDirectFromFbx(
