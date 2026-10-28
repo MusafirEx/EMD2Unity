@@ -42,6 +42,17 @@ This preset is based on user-verified STG texturing and is **on by default** for
 Stage defaults do **not** apply to non-STG character/motion models; no original game EMD, EMAT or DDS data is edited. Existing EMD subassets will be reimported when Unity detects the updated ScriptedImporter revision 16. You can confirm the actual effective parser flags in **Diagnose EMD UV Mapping (Read-only)**.
 
 
+### Phase 5A troubleshooting: FBX donor-distance limit exceeded
+
+If FBX preparation reports `handleblade_0: transformed vertex 392 is 1.1426 Unity units from its closest original vertex`, this is **not** a parsing error or changed-topology failure. The default safety limit in **Weapon FBX Preparation** is 1.0 Unity unit. The source and edited model positions may be misaligned, their relative scale/axis may differ, or the FBX design may genuinely extend away from the original mesh.
+
+A **read-only Analyze Mapping Distances** button is available in **Weapon FBX Preparation**. It reports (for every assigned mesh) source/FBX bounds centres/sizes, nearest-original donor max/mean/95th-percentile distances, counts exceeding the current Preparation limit, counts exceeding the separate **Topology Rebuild 0.5 EMD-unit default**, and the most distant FBX vertex/donor indices. The report is logged to the Unity Console for MCP analysis; it writes no files.
+
+1. Run the diagnostic and inspect alignment/bounds first. For obvious FBX scale/axis/position mistakes, fix its object/mesh transform in Blender or Unity and rerun.
+2. If the larger silhouette is intentional, for a controlled experiment set **Max preview donor distance (Unity units)** above the reported maximum, for example **1.2** for a 1.1426-unit outlier. This permits nearest-original skin-weight preview assignment but does **not** prove its validity.
+3. Then in **Weapon EMD Topology Rebuild**, set **Maximum donor distance (EMD model units)** above the diagnostic's reported required raw EMD radius; if the EMD importer Model Scale is 1, approximately the same value, e.g. 1.2. Turn **Prefer original vertex index for attributes OFF** for Blender-reordered meshes; turn **Write edited UV0 ON** where appropriate.
+4. For genuinely dissimilar geometry or bones, nearest original-vertex mapping may animate wrongly; this is an acknowledged limitation, not something an arbitrarily high threshold fixes. Keep backups and inspect in-game results.
+
 ### Phase 5A: Prepare Blender/FBX meshes for an existing weapon EMD (EXPERIMENTAL)
 
 **Tools → EMD2Unity → Weapon FBX Preparation (Experimental)** is a separate editor tool added after the successful user-reported in-game +1-vertex/+1-triangle topology rebuild of `DRV00_W00_topology.emd`. Unlike the earlier test, this prepares geometry from an imported Blender FBX without assuming its vertex count/order matches the original source weapon.
