@@ -42,6 +42,14 @@ This preset is based on user-verified STG texturing and is **on by default** for
 Stage defaults do **not** apply to non-STG character/motion models; no original game EMD, EMAT or DDS data is edited. Existing EMD subassets will be reimported when Unity detects the updated ScriptedImporter revision 16. You can confirm the actual effective parser flags in **Diagnose EMD UV Mapping (Read-only)**.
 
 
+### Fix FBX vertex-count mismatches without rebuilding EMD topology
+
+The strict weapon patch exporter cannot accept FBX meshes that differ from the original EMD vertex count or triangle order. In this case it reports the **original EMD expected count**, **source imported Mesh count** and **edited Mesh count** for the specific named group. This is intentional: writing an FBX mesh with new topology into the original fixed-size EMD buffers would corrupt offsets, index topology and skin weights.
+
+For a safe **first actual modified-vertex test**, open **Tools → EMD2Unity → Weapon EMD Position Patch (Experimental)** and choose the **original imported `DRV00_W00.emd`** as source. Click **Create Editable Weapon Copy from Original EMD**. The tool creates a scene instance with four separately cloned, persisted mesh `.asset` files under `Assets/EMD2Unity_Editable/...`; it does not modify the original EMD. The new scene instance is automatically placed in **Edited Model Root**. Click **Apply Test Offset to handleblade_0 (Vertex #0)** with the default X = `+0.05` to change one position without disturbing topology, then export to a new `DRV00_W00_modified.emd`. Use the **Weapon EMD Round-Trip Audit** to verify **1 changed vertex / 0 unexpected non-position bytes**, then test in the PS3 game.
+
+This workaround supports controlled position-only edits of the **native EMD topology**. It does NOT turn arbitrary FBX/Blender mesh replacement into a general EMD exporter. That requires a separate binary rebuild supporting changed vertex/index counts, UV/weight buffers, and offset updates.
+
 ### Verify a weapon EMD export byte-for-byte
 
 After importing `DRV00_W00_patched.emd` in Unity, use **Tools → EMD2Unity → Weapon EMD Round-Trip Audit (Experimental)**. Assign **Original Weapon .emd** to `DRV00_W00.emd` and **Patched Weapon .emd** to `DRV00_W00_patched.emd`, then click **Compare Binary EMD Files**. The tool reads the two source files (not Unity mesh previews) and checks identical file lengths, polygon layout, bone/material/UV/skin/index/unknown data bytes and exactly which float32 position bytes changed. It reports source/target SHA-256, changed byte counts, each mesh's changed vertex count/max position delta and **PASS / FAIL**.
