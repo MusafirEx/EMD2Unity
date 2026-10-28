@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased (experimental branch) — weapon EMD position-only patch proof of concept
+
+- Added a standalone Unity Editor **Weapon EMD Position Patch** tool for existing `_Wxx.emd` assets, initially scoped to `DRV00_W00.emd`. It modifies only big-endian float32 positions and writes a new file, preserving original bones, weight streams, material/texture information, UVs, vertex color data and all unknown source bytes.
+- Validates one group per type-0x0004 polygon, input mesh names, vertex counts, triangle index arrays, skin weights and identity local transforms; refuses unsupported layouts or source-file overwrite.
+- Verified the user's DRV00 weapon input has 4 polygon groups, 1,754 vertices, 1,596 triangles, 3 bones, 3 materials, 8-byte UV stride. Original EMD model-space XYZ → Unity Y/Z swap → EMD XYZ produced **exactly identical bytes and SHA-256** for all vertices in a separate Python binary experiment.
+- Exporter remains experimental and unmerged; modified vertex and actual PS3 loading tests have not been performed.
+
 ## 0.5.9 — automatic STG importer defaults
 
 - Automatically enable a **stage-only import preset** for `.emd` files under an `stg` folder or `STG<number>` directory (case-insensitive). The preset is enabled by default, including for previously imported STG assets after the importer revision 16 upgrade.
