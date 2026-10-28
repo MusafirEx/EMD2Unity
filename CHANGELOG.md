@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased (experimental branch) — Phase 5B one-window Direct FBX → EMD
+
+- Added **Direct FBX to Weapon EMD (Experimental)**, a one-window, one-click export from selected Blender/FBX geometry plus original `_Wxx.emd` template to a **new** `.emd`.
+- Supports FBX source GameObject assets and scene instances, nested imported meshes, multiple FBX submeshes/material slots assigned to existing EMD polygon/material slots, and partial replacement. Referenced triangle indices are compacted to an independent vertex stream per EMD slot.
+- Applies source FBX transform or root-relative transform (user choice) and corrects reversed triangle winding for mirrored transforms. Optional FBX UV0 and vertex colors are re-encoded; untouched EMD groups retain original UV/color bytes. Original EMD skeleton/material layout is retained.
+- New direct path drives the Phase 4 EMD binary rebuilder in memory, with **no intermediate saved mesh assets**, no FBX Preparation stage, and **no nearest-donor acceptance threshold**; all temporary GameObjects/Mesh objects are destroyed. Existing source and output files are protected from overwrite.
+- Nearest original vertex data still supplies opaque attributes and original raw bone weights; a valid source EMD remains **required**. This is a weapon-slot-replacement exporter, not a template-free general FBX→EMD compiler. Unity compilation and arbitrary FBX in-game behavior remain unverified.
+
 ## Unreleased (experimental branch) — FBX donor-distance diagnostics
 
 - When Blender/FBX replacement mesh vertices exceed native EMD nearest-donor safety distance (e.g. `handleblade_0 vertex 392` at 1.1426 vs default 1.0), **Weapon FBX Preparation** now offers **Analyze Mapping Distances (read-only)**.
