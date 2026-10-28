@@ -2,6 +2,11 @@
 
 ## 0.5.8 (experimental branch) — UV mapping diagnostics and opt-in mesh overrides
 
+- STG31/AREA02 audit checked 26 meshes and 20,465 vertices in aligned-16 mode. Every imported UV0 was finite; no values exceeded absolute 64. All 26 meshes parsed without skipped polygons, while legacy UV positions drifted cumulatively to 64 bytes before the final group.
+- The first raw packed vertex color of **all 26 groups** ended with `FF`, e.g. `4C 4C 4C FF`, `A7 AE B5 FF`, `D8 D8 D8 FF`. Legacy ARGB decoding incorrectly maps these as blue=255, alpha=first byte. Add opt-in **Stage Vertex Colors Are RGBA (Experimental)**, false by default, preserving old character/other EMD behavior until confirmed visually. ScriptedImporter revision 15 forces reimport.
+- UV diagnostic prints both RGBA and legacy ARGB interpretations from original four color bytes, and respects the importer's selected color format. UVs, geometry, source files, texture lookups and material bindings are not affected by this color option.
+
+
 - Added **Align UV Blocks to 16 Bytes (Experimental)** to the Model importer tab, disabled by default, with ScriptedImporter revision 14 for reimport. The new mode advances the next UV block to the absolute next 16-byte offset; nonzero padding is accepted. Preserve Zero UV Words does not affect this mode.
 - A user-provided STG30/AREA00 audit showed 24-byte UV records with starts `0x126B0, 0x166A0, 0x24908, 0x250D0, 0x28580`. Sixteen-byte alignment predicts `0x126B0, 0x166A0, 0x24910, 0x250E0, 0x28590`. The corrected first-vertex colors at affected groups match plausible ARGB bytes (e.g. `E8 E8 E8 FF`), and primary half-float UVs become finite. This is evidence for padding, **not yet visually verified**.
 - UV audit now performs a third read-only aligned-16 parse and prints per-mesh offset differences, decoded UV0 statistics and a first-vertex color. No default mesh channel, material selection or texture binding was changed.
