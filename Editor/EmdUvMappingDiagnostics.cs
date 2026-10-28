@@ -119,6 +119,15 @@ namespace MusafirEx.EMD2Unity
                 string.Join(", ", candidates.ToArray());
         }
 
+        private static string PointerCandidate(long candidate, EmdGroup g, byte[] data)
+        {
+            if (candidate < 0 || candidate > data.LongLength - (long)g.UvStride * g.Vertices.Length)
+                return "outside file/mesh-span (" + candidate + ")";
+            long delta = candidate - g.UvStartOffset;
+            string label = "0x" + candidate.ToString("X") + " (delta=" + delta + ")";
+            return label;
+        }
+
         private static string HexAt(byte[] data, int offset, int maxBytes)
         {
             if (offset < 0 || offset >= data.Length) return "(out of bounds)";
@@ -208,6 +217,11 @@ namespace MusafirEx.EMD2Unity
             }
             var meshes = ImportedMeshes(AssetDatabase.LoadAssetAtPath<GameObject>(path));
             report.AppendLine("Imported mesh objects found: " + meshes.Count);
+            report.AppendLine("Original EMD file UV base offset: 0x" +
+                chosen.FileUvOffset.ToString("X"));
+            report.AppendLine("UV group metadata +0x34 is labelled ActualUVStart " +
+                "in the reference MaxScript, but its pointer base/meaning is " +
+                "not established. The candidates below must be verified before use.");
             int groups = Math.Min(chosen.Groups.Count, 300);
             for (int i = 0; i < groups; i++)
             {
@@ -223,6 +237,21 @@ namespace MusafirEx.EMD2Unity
                     " | default source channel=" + primary);
                 report.AppendLine("  UV block start=0x" + g.UvStartOffset.ToString("X") +
                     " | zero bytes skipped AFTER this block=" + g.UvSkippedZeroBytes);
+                report.AppendLine("  Group descriptor start: 0x" +
+                    g.UvGroupHeaderOffset.ToString("X") +
+                    " | raw UV pointer [+0x34]: 0x" +
+                    unchecked((uint)g.UvHeaderPointerRaw).ToString("X8") +
+                    " | secondary [+0x38]: 0x" +
+                    unchecked((uint)g.UvHeaderSecondaryRaw).ToString("X8"));
+                long pointerAbsolute = (long)g.UvHeaderPointerRaw;
+                long pointerGroupRelative = (long)g.UvGroupHeaderOffset + g.UvHeaderPointerRaw;
+                long pointerUvBaseRelative = (long)chosen.FileUvOffset + g.UvHeaderPointerRaw;
+                report.AppendLine("  Raw pointer hypotheses: absolute=" +
+                    PointerCandidate(pointerAbsolute, g, bytes) +
+                    ", group-relative=" + PointerCandidate(pointerGroupRelative, g, bytes) +
+                    ", file-UV-relative=" + PointerCandidate(pointerUvBaseRelative, g, bytes));
+                report.AppendLine("  Sequential UV block first 24 bytes: " +
+                    HexAt(bytes, g.UvStartOffset, 24));
                 if (g.UvSkippedZeroBytes > 0)
                     report.AppendLine("  CHECK: zero words skipped between UV blocks; " +
                         "could be genuine padding OR valid leading coordinates.");
@@ -263,6 +292,10 @@ namespace MusafirEx.EMD2Unity
                 report.AppendLine("Limited report to first " + groups +
                     " groups of " + chosen.Groups.Count + ".");
             report.AppendLine("");
+            report.AppendLine("IMPORTANT: matching sequential UV start offsets do not " +
+                "prove that those offsets are correct. Descriptor raw pointers and the " +
+                "24-byte per-vertex layout need binary validation. Repeated NaNs and " +
+                "near-constant UVs can also indicate non-UV packed attributes.");
             report.AppendLine("If legacy and preserve-zero modes have the same UV starts " +
                 "for every mesh, changing Preserve Zero UV Words cannot fix those meshes. " +
                 "Skipped zeros after the final group do not affect any reported group.");
