@@ -2,6 +2,11 @@
 
 ## 0.5.8 (experimental branch) — UV mapping diagnostics and opt-in mesh overrides
 
+- STG30/AREA00 read-only UV audit (5 mesh groups, 24-byte UV records) confirms that both zero-skip modes start every mesh at identical offsets. The sole 4-byte skip occurs after the last mesh, so changing zero-skip mode cannot fix its reported UVs.
+- Invalid default UV3 was observed for obj001_1_2 (31/83 nonfinite), obj002_3 (28/562 nonfinite plus extreme coordinates) and obj003_4 (all 121 vertices contain V=32769). The most promising **manual test candidates**, not verified fixes, are respectively source channels 0 (also inspect 1), 2 and 2.
+- UV audit now flags unusable default UV data, lists finite/bounded/variable source channels for visual comparison and prints bounded hex from the first raw UV record to support investigation of per-mesh stream alignment. Original EMD, materials and texture bindings are unaffected.
+
+
 - Investigated a report that model textures now bind correctly, while some meshes render with scrambled texture coordinates.
 - Retained all EMD source UV pairs rather than discarding non-primary channels. The original UV0 selection remains unchanged by default: first source pair for 8/12/16-byte layouts, fourth pair for 20/24/28-byte layouts. Extra source channels are available in Unity UV1 onward.
 - Added optional **Preserve Zero UV Words (Experimental)** to avoid treating legitimate zero-valued coordinates as inter-block padding. This is deliberately off by default because some files may have real padding; turning it on can also make mappings worse.
