@@ -14,6 +14,7 @@ FILES = (
     "Editor/EmdTextureBindingDiagnostics.cs",
     "Editor/EmdUvMappingDiagnostics.cs",
     "Editor/EmdWeaponPositionPatchWindow.cs",
+    "Editor/EmdWeaponRoundTripAuditWindow.cs",
     "Editor/StgDdsBatchRepairWindow.cs",
     "Editor/PemtImporter.cs",
     "Editor/PemtBinaryDiagnostics.cs",
