@@ -114,8 +114,11 @@ namespace MusafirEx.EMD2Unity
 
         // Decode into an unsaved AnimationClip. This is the single keyframe path
         // for preview, selected export and batch export.
+        // Preview-only opt-in: unsupported markers may be omitted from the
+        // transient clip, never from exported .anim assets.
         internal static AnimationClip CreateTransientClip(PemtMotionLibrary lib,
-            PemtMotionMetadata motion, GameObject model, bool rotateFirst)
+            PemtMotionMetadata motion, GameObject model, bool rotateFirst,
+            bool allowPartialPreview = false, List<string> skippedTracks = null)
         {
             if(lib==null||motion==null||model==null)throw new ArgumentException("Select a PEMT motion and an EMD model.");
             // The Inspector may hold either an EMD Project asset or a scene prefab
@@ -144,14 +147,26 @@ namespace MusafirEx.EMD2Unity
             var clip=new AnimationClip{name=name,frameRate=60f,legacy=false};
             var seen=new HashSet<string>();
             int bound=0,missing=0;
+            PemtTrackMetadata activeTrack = null;
             try
             {
                 foreach(var track in motion.tracks)
                 {
+                    activeTrack = track;
                     uint kind=Convert.ToUInt32(track.markerHex.Substring(2),16);
                     if(kind==0x40)continue;
                     if(kind!=Position && kind!=Rotation)
-                        throw new InvalidDataException("Unsupported track marker "+track.markerHex);
+                    {
+                        string description = PemtMotionTrackDiagnostics.TrackSummary(motion, track);
+                        if (allowPartialPreview)
+                        {
+                            if (skippedTracks != null) skippedTracks.Add(description);
+                            continue; // Leave this bone/channel at its imported rest pose.
+                        }
+                        throw new InvalidDataException("Unsupported track marker " +
+                            track.markerHex + "; use Copy Motion Track Report in Preview " +
+                            "to inspect raw offsets and payload.");
+                    }
                     uint info=Convert.ToUInt32(track.infoHex.Substring(2),16);
                     int jointId=(int)(info>>16);
                     int count=(int)(info&0xffff);
@@ -206,14 +221,27 @@ namespace MusafirEx.EMD2Unity
                     }
                     bound++;
                 }
-                if(bound<1)throw new InvalidDataException("No motion tracks matched the selected EMD bones.");
+                activeTrack = null;
+                if(bound<1)
+                    throw new InvalidDataException(
+                        allowPartialPreview ?
+                        "Partial preview could not be built: no supported transform tracks " +
+                        "matched the selected EMD bones. No .anim file was created." :
+                        "No motion tracks matched the selected EMD bones.");
                 clip.EnsureQuaternionContinuity();
                 return clip;
             }
-            catch
+            catch (Exception ex)
             {
                 if (!AssetDatabase.Contains(clip))
                     UnityEngine.Object.DestroyImmediate(clip);
+                // Record exact numeric motion/track/marker for errors that
+                // affect only certain Motion IDs. Never silently ignore
+                // malformed supported keyframes or unsupported export data.
+                if (activeTrack != null && ex is InvalidDataException)
+                    throw new InvalidDataException("PEMT source " + sourcePath +
+                        " | " + PemtMotionTrackDiagnostics.TrackSummary(motion, activeTrack) +
+                        ": " + ex.Message, ex);
                 throw;
             }
         }
