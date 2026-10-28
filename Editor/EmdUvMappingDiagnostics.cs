@@ -128,6 +128,21 @@ namespace MusafirEx.EMD2Unity
             return label;
         }
 
+        private static string VertexColorByteOrder(byte[] data, EmdGroup group)
+        {
+            // Existing EMD layouts place colors before UVs for 8-16-byte
+            // records, or after three packed pairs for 20-28-byte records.
+            int colorOffset = group.UvStartOffset + (group.UvStride > 16 ? 12 : 0);
+            if (colorOffset < 0 || colorOffset > data.Length - 4)
+                return "color bytes outside file";
+            byte a = data[colorOffset], b = data[colorOffset + 1];
+            byte c = data[colorOffset + 2], d = data[colorOffset + 3];
+            return "raw=" + a.ToString("X2") + " " + b.ToString("X2") +
+                " " + c.ToString("X2") + " " + d.ToString("X2") +
+                " | RGBA=(" + a + "," + b + "," + c + "," + d + ")" +
+                " | legacy ARGB=(" + b + "," + c + "," + d + "," + a + ")";
+        }
+
         private static string HexAt(byte[] data, int offset, int maxBytes)
         {
             if (offset < 0 || offset >= data.Length) return "(out of bounds)";
@@ -166,11 +181,11 @@ namespace MusafirEx.EMD2Unity
         }
 
         private static EmdDocument AttemptParse(byte[] bytes, bool keepZeroWords,
-            bool align16, StringBuilder report, string name)
+            bool align16, bool rgbaLast, StringBuilder report, string name)
         {
             try
             {
-                EmdDocument doc = EmdParser.Parse(bytes, true, keepZeroWords, align16);
+                EmdDocument doc = EmdParser.Parse(bytes, true, keepZeroWords, align16, rgbaLast);
                 report.AppendLine(name + ": " + doc.Groups.Count +
                     " mesh groups; skipped polygon records=" + doc.SkippedPolygonCount);
                 return doc;
@@ -196,6 +211,7 @@ namespace MusafirEx.EMD2Unity
             var importer = AssetImporter.GetAtPath(path) as EmdImporter;
             bool preserveZero = false;
             bool align16 = false;
+            bool rgbaLast = false;
             if (importer != null)
             {
                 SerializedObject so = new SerializedObject(importer);
@@ -203,16 +219,19 @@ namespace MusafirEx.EMD2Unity
                 if (preserve != null) preserveZero = preserve.boolValue;
                 SerializedProperty alignment = so.FindProperty("alignUvBlocksTo16");
                 if (alignment != null) align16 = alignment.boolValue;
+                SerializedProperty vertexColorMode = so.FindProperty("vertexColorsRgbaLast");
+                if (vertexColorMode != null) rgbaLast = vertexColorMode.boolValue;
             }
             report.AppendLine("Current Preserve Zero UV Words: " + preserveZero);
             report.AppendLine("Current Align UV Blocks to 16 Bytes: " + align16);
+            report.AppendLine("Current Stage Vertex Colors Are RGBA: " + rgbaLast);
             report.AppendLine("UV source pairs are decoded as big-endian half-floats. " +
                 "Default UV0 uses source channel 0 (strides 8..16) or " +
                 "source channel 3 (strides 20..28).");
             byte[] bytes = File.ReadAllBytes(path);
-            EmdDocument legacy = AttemptParse(bytes, false, false, report, "Legacy skip-zero alignment");
-            EmdDocument contiguous = AttemptParse(bytes, true, false, report, "Preserve-zero alignment");
-            EmdDocument aligned = AttemptParse(bytes, false, true, report, "16-byte aligned UV blocks");
+            EmdDocument legacy = AttemptParse(bytes, false, false, rgbaLast, report, "Legacy skip-zero alignment");
+            EmdDocument contiguous = AttemptParse(bytes, true, false, rgbaLast, report, "Preserve-zero alignment");
+            EmdDocument aligned = AttemptParse(bytes, false, true, rgbaLast, report, "16-byte aligned UV blocks");
             EmdDocument chosen = align16 ? aligned : (preserveZero ? contiguous : legacy);
             EmdDocument alternate = preserveZero ? legacy : contiguous;
             if (chosen == null)
@@ -259,6 +278,8 @@ namespace MusafirEx.EMD2Unity
                     ", file-UV-relative=" + PointerCandidate(pointerUvBaseRelative, g, bytes));
                 report.AppendLine("  Sequential UV block first 24 bytes: " +
                     HexAt(bytes, g.UvStartOffset, 24));
+                report.AppendLine("  Vertex color byte orders: " +
+                    VertexColorByteOrder(bytes, g));
                 if (g.UvSkippedZeroBytes > 0 && !align16)
                     report.AppendLine("  CHECK: zero words skipped between UV blocks; " +
                         "could be genuine padding OR valid leading coordinates.");
@@ -319,9 +340,13 @@ namespace MusafirEx.EMD2Unity
                     " groups of " + chosen.Groups.Count + ".");
             report.AppendLine("");
             report.AppendLine("IMPORTANT: 16-byte alignment is a candidate layout " +
-                "supported by STG30/AREA00 hex evidence, not a verified universal EMD rule. " +
-                "Compare aligned UV0 and vertex colours for the affected meshes. " +
-                "Other EMD files may use different packing or layout.");
+                "supported by stage EMD hex evidence, not a verified universal EMD rule. " +
+                "Check visual UVs and vertex colours for affected meshes. The RGBA " +
+                "color mode changes vertex colors only and is opt-in.");
+            report.AppendLine("When all sampled vertex color bytes end with FF and " +
+                "the first byte varies, RGBA ordering may be correct. Check " +
+                "the material shader and original PS3 rendering before " +
+                "enabling it globally.");
             report.AppendLine("If legacy and preserve-zero modes have the same UV starts " +
                 "for every mesh, changing Preserve Zero UV Words cannot fix those meshes. " +
                 "Skipped zeros after the final group do not affect any reported group.");
