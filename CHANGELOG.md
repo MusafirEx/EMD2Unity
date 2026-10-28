@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.7 — explicit material-stem match for ambiguous STG texture layers
+
+- Analyzed the complete user-provided STG31/AREA00 texture-binding report: 8 source materials and 8 mesh groups. Mesh objects 0, 1, 2, 5 and 7 still used auxiliary `_LI` maps as Unity diffuse, even though 0/1/2/5 have directly referenced material-name-matching `_CO` variants.
+- When **Prefer Referenced _CO for Diffuse** (existing serialized `preferUniqueColourMap`) is enabled, choose a locally loadable explicit `_CO` reference if there is exactly one candidate; if multiple exist, allow only the exactly matching material stem (`ground02_BL` → `ground02_CO`) to resolve the ambiguity. Matches are limited to names in the SAME EMD material's submaterials/companion EMAT; do not guess by filename proximity or arbitrary first candidate.
+- `stg31_ground02_BL`, `stg31_ground01_BL`, `stg31_jimenKusa01_BL` and `stg31_jimen03_BL` now have an evidence-based primary `_CO` candidate; `stg31_soukojimen01_BL1` remains unchanged because neither ground01_CO nor ground02_CO matches its own stem.
+- Audit now prints `MATERIAL-STEM MATCH`, proposed diffuse and whether a local Unity Texture2D can be loaded. Existing unique `_CO` matches and direct `_CO` bindings are retained. The Inspector explains that this is a provisional **single-texture diffuse fallback**, not original PS3 multi-layered texture blending.
+- EMD ScriptedImporter revision 12 forces source asset reimport. No DDS or EMD binary files are modified. Unity compilation and visual correctness need testing.
+
+
 ## 0.5.6 — identify and correct EMD diffuse texture mapping (STG31 AREA00)
 
 - Investigated the selected `Assets/KRBWS/stg/STG31/model/AREA00.emd`. The imported asset has eight mesh objects and texture dependencies including `stg31_jimen01_LI`, `Aaspyuka01_CO`, `stg31_jimenAll_LI`, and `stg31_soukojimen01_LI`. Dependency paths alone do not prove which mesh has an incorrect texture.
