@@ -24,6 +24,24 @@ python Tools/build_unitypackage.py --output EMD2Unity-v0.4.9.unitypackage
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
 
+### Automatic STG model import defaults (v0.5.9)
+
+EMD2Unity automatically recognizes stage models located under a case-insensitive `stg` folder or in a folder named `STG` followed by digits, such as `Assets/KRBWS/stg/STG31/model/AREA02.emd`. New and existing stage EMD assets use the following **effective** defaults once imported with v0.5.9:
+
+| Model setting | STG default |
+| --- | --- |
+| Convert PS3 Z-Up to Unity Y-Up | **Off** |
+| Align UV Blocks to 16 Bytes | **On** |
+| Stage Vertex Colors Are RGBA | **On** |
+| Preserve Vertex Colors | **On** |
+| Preserve Zero UV Words | **Off** |
+| Mesh Source UV Channel Overrides | **Empty (size 0)** |
+
+This preset is based on user-verified STG texturing and is **on by default** for stage folders; no manual configuration is needed. In the EMD **Model** Inspector, leave **Use STG Import Defaults** checked to display the enforced effective values. To customize a particular stage, uncheck it and use the manual settings below (any stored mesh overrides are preserved but ignored while the preset is active).
+
+Stage defaults do **not** apply to non-STG character/motion models; no original game EMD, EMAT or DDS data is edited. Existing EMD subassets will be reimported when Unity detects the updated ScriptedImporter revision 16. You can confirm the actual effective parser flags in **Diagnose EMD UV Mapping (Read-only)**.
+
+
 ## How to use
 
 1. Extract `.EMD` model files from your own game files. This package does not extract NCAT archives or package game assets.

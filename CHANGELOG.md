@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.9 — automatic STG importer defaults
+
+- Automatically enable a **stage-only import preset** for `.emd` files under an `stg` folder or `STG<number>` directory (case-insensitive). The preset is enabled by default, including for previously imported STG assets after the importer revision 16 upgrade.
+- STG preset values: **Convert PS3 Z-Up to Unity Y-Up OFF**, **Align UV Blocks to 16 Bytes ON**, **Stage Vertex Colors Are RGBA ON**, **Preserve Vertex Colors ON**, **Preserve Zero UV Words OFF**, and **Mesh Source UV Channel Overrides effectively empty**. This matches user-verified rendering of STG stage textures.
+- The Model Inspector shows the **effective** values as disabled controls while **Use STG Import Defaults** is enabled. Switch it off for an individual stage file to edit its original manual settings, which remain stored instead of being destroyed.
+- Non-STG imports (e.g. character `chr` and motion `CSD` folders) keep their previous settings. The UV audit reads the effective stage preset values. No source game EMD, EMAT or DDS bytes are modified.
+- ScriptedImporter revision 16 triggers a reimport. The revision was reviewed statically, but live Unity compilation/visual regression testing of the new preset itself was not available at the time of the change.
+
+
 ## 0.5.8 (experimental branch) — UV mapping diagnostics and opt-in mesh overrides
 
 - STG31/AREA02 audit checked 26 meshes and 20,465 vertices in aligned-16 mode. Every imported UV0 was finite; no values exceeded absolute 64. All 26 meshes parsed without skipped polygons, while legacy UV positions drifted cumulatively to 64 bytes before the final group.

@@ -24,7 +24,7 @@ namespace MusafirEx.EMD2Unity
         [Range(0, 6)] public int sourceChannel;
     }
 
-    [ScriptedImporter(15, "emd")]
+    [ScriptedImporter(16, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         [Header("Model")]
@@ -47,6 +47,45 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private bool alignUvBlocksTo16 = false;
         [SerializeField] private List<EmdUvChannelOverride> uvChannelOverrides =
             new List<EmdUvChannelOverride>();
+        // Default false is important for previously imported .emd.meta files
+        // that do not yet contain this setting. STG defaults must still apply
+        // after the package is upgraded; users can opt out on each asset.
+        [SerializeField] private bool customizeStageImport = false;
+
+        // Recognize STG resources by folder rather than just AREA file names:
+        // some valid stage assets have other names (e.g. jimen_naka).
+        // Folder segments are case-insensitive and safe for Windows paths.
+        internal static bool IsStageEmdPath(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+            string normalized = "/" + path.Replace('\\', '/').TrimStart('/');
+            if (normalized.IndexOf("/stg/", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            string[] segments = normalized.Split('/');
+            for (int i = 1; i < segments.Length - 1; ++i)
+            {
+                string segment = segments[i];
+                if (segment.Length > 3 &&
+                    segment.StartsWith("STG", StringComparison.OrdinalIgnoreCase) &&
+                    segment.Substring(3).All(char.IsDigit))
+                    return true;
+            }
+            return false;
+        }
+
+        internal bool IsUsingStageDefaults =>
+            !customizeStageImport && IsStageEmdPath(assetPath);
+
+        private bool EffectiveSwapYAndZ => !IsUsingStageDefaults && swapYAndZ;
+        private bool EffectiveUseVertexColors => IsUsingStageDefaults || useVertexColors;
+        internal bool EffectiveVertexColorsRgbaLast =>
+            IsUsingStageDefaults || vertexColorsRgbaLast;
+        internal bool EffectiveAlignUvBlocksTo16 =>
+            IsUsingStageDefaults || alignUvBlocksTo16;
+        internal bool EffectivePreserveZeroUvWords =>
+            !IsUsingStageDefaults && preserveZeroUvWords;
+        private bool UseManualUvChannelOverrides => !IsUsingStageDefaults;
+
         [Header("Rig")]
         [SerializeField] private bool importSkeleton = true;
         [SerializeField] private bool repairDegenerateBoneAxes = true;
@@ -62,8 +101,8 @@ namespace MusafirEx.EMD2Unity
             try
             {
                 byte[] data = File.ReadAllBytes(ctx.assetPath);
-                var document = EmdParser.Parse(data, recoverSupportedPolygons, preserveZeroUvWords,
-                    alignUvBlocksTo16, vertexColorsRgbaLast);
+                var document = EmdParser.Parse(data, recoverSupportedPolygons, EffectivePreserveZeroUvWords,
+                    EffectiveAlignUvBlocksTo16, EffectiveVertexColorsRgbaLast);
                 CreateUnityAssets(ctx, document);
                 foreach (string warning in document.ImportWarnings)
                     ctx.LogImportWarning(warning);
@@ -78,11 +117,11 @@ namespace MusafirEx.EMD2Unity
         }
 
         private Vector3 ConvertVector(Vector3 v) =>
-            (swapYAndZ ? new Vector3(v.x, v.z, v.y) : v) * modelScale;
+            (EffectiveSwapYAndZ ? new Vector3(v.x, v.z, v.y) : v) * modelScale;
 
         private Matrix4x4 ConvertBoneMatrix(Matrix4x4 source)
         {
-            if (swapYAndZ)
+            if (EffectiveSwapYAndZ)
             {
                 Matrix4x4 flip = Matrix4x4.identity;
                 flip.m11 = 0f; flip.m22 = 0f;
@@ -430,13 +469,15 @@ namespace MusafirEx.EMD2Unity
                 for (int v = 0; v < verts.Length; ++v) verts[v] = ConvertVector(info.Vertices[v]);
                 mesh.vertices = verts;
                 int[] triangles = (int[])info.Triangles.Clone();
-                if (reverseWinding ^ swapYAndZ)
+                if (reverseWinding ^ EffectiveSwapYAndZ)
                     for (int t = 0; t < triangles.Length; t += 3)
                         { int temp = triangles[t]; triangles[t] = triangles[t + 2]; triangles[t + 2] = temp; }
                 mesh.triangles = triangles;
                 Vector2[] chosenUv = info.UV;
                 string meshName = info.Name + "_" + i;
-                for (int ruleIndex = 0; ruleIndex < (uvChannelOverrides == null ? 0 : uvChannelOverrides.Count); ruleIndex++)
+                for (int ruleIndex = 0; ruleIndex <
+                    (!UseManualUvChannelOverrides || uvChannelOverrides == null ?
+                        0 : uvChannelOverrides.Count); ruleIndex++)
                 {
                     EmdUvChannelOverride rule = uvChannelOverrides[ruleIndex];
                     if (rule == null || string.IsNullOrWhiteSpace(rule.meshName) ||
@@ -462,7 +503,7 @@ namespace MusafirEx.EMD2Unity
                         if (info.SourceUvChannels[uvChannel] != null &&
                             info.SourceUvChannels[uvChannel].Length == verts.Length)
                             mesh.SetUVs(uvChannel + 1, info.SourceUvChannels[uvChannel]);
-                if (useVertexColors && info.Colors.Length == verts.Length) mesh.colors32 = info.Colors;
+                if (EffectiveUseVertexColors && info.Colors.Length == verts.Length) mesh.colors32 = info.Colors;
                 mesh.RecalculateNormals();
                 if (chosenUv != null && chosenUv.Length == verts.Length) mesh.RecalculateTangents();
                 mesh.RecalculateBounds();
