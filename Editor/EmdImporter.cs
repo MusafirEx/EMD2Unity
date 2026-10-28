@@ -16,7 +16,7 @@ using UnityEngine.Rendering;
 
 namespace MusafirEx.EMD2Unity
 {
-    [ScriptedImporter(10, "emd")]
+    [ScriptedImporter(11, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         [Header("Model")]
@@ -31,6 +31,7 @@ namespace MusafirEx.EMD2Unity
         [Header("Materials")]
         [SerializeField] private bool findNearbyTextures = true;
         [SerializeField] private bool useEmatTextureReferences = true;
+        [SerializeField] private bool preferUniqueColourMap = true;
         [SerializeField] private bool linkNormalMaps = false;
         [SerializeField] private bool linkSpecularMaps = false;
 
@@ -230,6 +231,30 @@ namespace MusafirEx.EMD2Unity
                             ematTextures = ReadEmatTextureReferences(ematPath);
                         }
                     }
+                    if (preferUniqueColourMap && IsAuxiliaryTextureName(texName))
+                    {
+                        var candidates = info.SubTextureNames.Concat(ematTextures)
+                            .Where(t => !string.IsNullOrEmpty(t) &&
+                                t.EndsWith("_CO", StringComparison.OrdinalIgnoreCase))
+                            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                        if (candidates.Count == 1)
+                        {
+                            ctx.LogImportWarning("EMD material '" + info.Name +
+                                "' switched diffuse from auxiliary texture '" + texName +
+                                "' to uniquely referenced colour '" + candidates[0] +
+                                "'. Disable Prefer Unique _CO for Diffuse to preserve " +
+                                "the original first-submaterial behaviour.");
+                            texName = candidates[0];
+                        }
+                        else if (candidates.Count > 1)
+                        {
+                            ctx.LogImportWarning("EMD material '" + info.Name +
+                                "' has ambiguous _CO alternatives for auxiliary " +
+                                "diffuse '" + texName + "': " +
+                                string.Join(", ", candidates.ToArray()) +
+                                ". Kept original binding; use Diagnose EMD Texture Bindings.");
+                        }
+                    }
                     if (string.IsNullOrWhiteSpace(texName) || texName == "null")
                     {
                         // Exceptions from Random Talking Bush's MaxScript.
@@ -245,6 +270,10 @@ namespace MusafirEx.EMD2Unity
                     }
 
                     Texture2D diffuse = LoadNearbyTexture(ctx, ctx.assetPath, texName);
+                    if (diffuse == null && !string.IsNullOrWhiteSpace(texName) && texName != "null")
+                        ctx.LogImportWarning("EMD material '" + info.Name +
+                            "' could not load diffuse Texture2D '" + texName +
+                            "' from the model's local texture folders.");
                     if (diffuse != null)
                     {
                         if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", diffuse);
@@ -471,7 +500,16 @@ namespace MusafirEx.EMD2Unity
         // EMAT v1 discovery only: the observed files use the "TAME" byte order and
         // hold null-terminated texture names. We do not infer sampler order, UV sets,
         // render states or shader parameters from these strings.
-        private static List<string> ReadEmatTextureReferences(string path)
+        internal static bool IsAuxiliaryTextureName(string textureName)
+        {
+            if (string.IsNullOrWhiteSpace(textureName)) return false;
+            return textureName.EndsWith("_LI", StringComparison.OrdinalIgnoreCase) ||
+                textureName.EndsWith("_BL", StringComparison.OrdinalIgnoreCase) ||
+                textureName.EndsWith("_SP", StringComparison.OrdinalIgnoreCase) ||
+                textureName.EndsWith("_NO", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static List<string> ReadEmatTextureReferences(string path)
         {
             var names = new List<string>();
             byte[] bytes = File.ReadAllBytes(path);
@@ -490,7 +528,7 @@ namespace MusafirEx.EMD2Unity
             return names;
         }
 
-        private static string FindCompanionEmat(string emdPath, string materialName)
+        internal static string FindCompanionEmat(string emdPath, string materialName)
         {
             string parent = Path.GetDirectoryName(emdPath)?.Replace('\\', '/');
             if (string.IsNullOrEmpty(parent) || string.IsNullOrEmpty(materialName)) return null;
@@ -505,32 +543,54 @@ namespace MusafirEx.EMD2Unity
 
         private static Texture2D LoadNearbyTexture(AssetImportContext ctx, string emdPath, string textureName)
         {
-            if (string.IsNullOrWhiteSpace(textureName) || textureName == "null") return null;
-            string assetPath = FindTexture(emdPath, textureName);
-            if (assetPath == null) return null;
-            ctx.DependsOnSourceAsset(assetPath);
-            return AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+            if (string.IsNullOrWhiteSpace(textureName) ||
+                textureName.Equals("null", StringComparison.OrdinalIgnoreCase)) return null;
+            foreach (string assetPath in FindTextureCandidates(emdPath, textureName))
+            {
+                ctx.DependsOnSourceAsset(assetPath);
+                Texture2D image = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+                if (image != null) return image;
+                // A malformed/unimportable DDS is not a usable Texture2D.
+                // Try another local file with the exact same basename.
+            }
+            return null;
+        }
+
+        // Directory and extension order are explicit. Directory.EnumerateFiles()
+        // alone is filesystem-order-dependent, producing different assignments.
+        // Never match an approximate texture name or a neighbouring stage folder.
+        internal static List<string> FindTextureCandidates(string emdPath, string textureName)
+        {
+            var candidates = new List<string>();
+            string parent = Path.GetDirectoryName(emdPath)?.Replace('\\', '/');
+            if (string.IsNullOrEmpty(parent) ||
+                string.IsNullOrWhiteSpace(textureName)) return candidates;
+            string[] dirs = { parent + "/textures", parent + "/Textures", parent };
+            string[] exts = { ".dds", ".png", ".tga", ".jpg", ".jpeg", ".bmp" };
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string dir in dirs)
+            {
+                if (!Directory.Exists(dir)) continue;
+                string[] files = Directory.GetFiles(dir);
+                Array.Sort(files, StringComparer.OrdinalIgnoreCase);
+                foreach (string ext in exts)
+                    foreach (string filename in files)
+                    {
+                        if (!Path.GetFileNameWithoutExtension(filename).Equals(
+                                textureName, StringComparison.OrdinalIgnoreCase) ||
+                            !Path.GetExtension(filename).Equals(ext, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        string path = filename.Replace('\\', '/');
+                        if (seen.Add(path)) candidates.Add(path);
+                    }
+            }
+            return candidates;
         }
 
         private static string FindTexture(string emdPath, string textureName)
         {
-            string parent = Path.GetDirectoryName(emdPath)?.Replace('\\', '/');
-            if (string.IsNullOrEmpty(parent)) return null;
-            string[] dirs = { parent + "/textures", parent + "/Textures", parent };
-            string[] exts = { ".dds", ".png", ".tga", ".jpg", ".bmp" };
-            foreach (string dir in dirs)
-            {
-                if (!Directory.Exists(dir)) continue;
-                foreach (string filename in Directory.EnumerateFiles(dir))
-                {
-                    string fn = Path.GetFileNameWithoutExtension(filename);
-                    string ext = Path.GetExtension(filename);
-                    if (fn.Equals(textureName, StringComparison.OrdinalIgnoreCase) &&
-                        exts.Contains(ext, StringComparer.OrdinalIgnoreCase))
-                        return filename.Replace('\\', '/');
-                }
-            }
-            return null;
+            var candidates = FindTextureCandidates(emdPath, textureName);
+            return candidates.Count == 0 ? null : candidates[0];
         }
     }
 
@@ -541,7 +601,12 @@ namespace MusafirEx.EMD2Unity
         public int NodeID;
         public Matrix4x4 LocalMatrix;
     }
-    internal sealed class EmdMaterial { public string Name; public string TextureName; }
+    internal sealed class EmdMaterial
+    {
+        public string Name;
+        public string TextureName;
+        public readonly List<string> SubTextureNames = new List<string>();
+    }
     internal sealed class EmdWeight
     {
         public readonly int[] Indices = { -1, -1, -1, -1 };
@@ -703,6 +768,7 @@ namespace MusafirEx.EMD2Unity
                 int subCount = r.I32();
                 ValidateCount(subCount, "submaterial", 512);
                 string tex = "null";
+                var allSubTextures = new List<string>();
                 r.Seek((long)start + blockSize);
                 for (int sub = 0; sub < subCount; ++sub)
                 {
@@ -711,10 +777,13 @@ namespace MusafirEx.EMD2Unity
                     if (subSize < 16) throw new InvalidDataException("Malformed submaterial at 0x" + subStart.ToString("X"));
                     r.I32(); r.I32();
                     string subName = r.CString(255);
+                    allSubTextures.Add(subName);
                     if (sub == 0) tex = subName;
                     r.Seek((long)subStart + subSize);
                 }
-                doc.Materials.Add(new EmdMaterial { Name = name, TextureName = tex });
+                var material = new EmdMaterial { Name = name, TextureName = tex };
+                material.SubTextureNames.AddRange(allSubTextures);
+                doc.Materials.Add(material);
             }
             r.Seek(polygonOffset);
             for (int p = 0; p < polygonCount; ++p)
