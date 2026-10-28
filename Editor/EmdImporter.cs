@@ -1180,13 +1180,11 @@ namespace MusafirEx.EMD2Unity
                         // rounded up to the next absolute 16-byte boundary.
                         // Padding is not necessarily all zero.
                         long alignedEnd = ((long)uvBlockEnd + 15L) & ~15L;
-                        if (alignedEnd > r.Length)
-                            throw new InvalidDataException(
-                                "Aligned UV block end exceeds EMD file length in " + name +
-                                ": raw=0x" + uvBlockEnd.ToString("X") +
-                                ", aligned=0x" + alignedEnd.ToString("X") +
-                                ", file=0x" + r.Length.ToString("X"));
-                        uvOffset = (int)alignedEnd;
+                        // The last UV block may reach EOF without trailing
+                        // alignment padding. In that case the cursor is never
+                        // used for another group, so retain its valid end.
+                        uvOffset = alignedEnd <= r.Length ?
+                            (int)alignedEnd : uvBlockEnd;
                     }
                     else if ((stage200Headers != null && stage200Headers.Count > 0) ||
                              preserveZeroUvWords)
