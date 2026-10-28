@@ -25,6 +25,9 @@ namespace MusafirEx.EMD2Unity
         // Set only by the one-click FBX exporter. Unmapped original EMD parts
         // keep their original UV/color bytes rather than re-encoding imported UV0.
         private HashSet<string> directReplacedParts;
+        // FBX direct-export path: use actual FBX normals and FBX bone weights,
+        // never borrow original per-vertex attributes for replaced groups.
+        private bool directNativeFbxAttributes;
 
         [MenuItem("Tools/EMD2Unity/Weapon EMD Topology Rebuild (Experimental)")]
         public static void Open() => GetWindow<EmdWeaponTopologyRebuildWindow>("Weapon EMD Rebuild");
@@ -135,7 +138,8 @@ namespace MusafirEx.EMD2Unity
         // but the user's distance-threshold test is not part of this workflow.
         internal static string ExportDirectFromFbx(
             GameObject originalEmd, GameObject temporaryEditedRoot,
-            HashSet<string> replacedParts, bool writeFbxUv0, bool writeFbxColors)
+            HashSet<string> replacedParts, bool writeFbxUv0, bool writeFbxColors,
+            bool useNativeFbxAttributes)
         {
             if (originalEmd == null || temporaryEditedRoot == null ||
                 replacedParts == null || replacedParts.Count == 0)
@@ -150,6 +154,7 @@ namespace MusafirEx.EMD2Unity
                 worker.useEditedColors = writeFbxColors;
                 worker.attributeTransferLimit = float.MaxValue;
                 worker.directReplacedParts = new HashSet<string>(replacedParts);
+                worker.directNativeFbxAttributes = useNativeFbxAttributes;
                 worker.Run();
                 return worker.lastReport;
             }
@@ -314,6 +319,127 @@ namespace MusafirEx.EMD2Unity
             v /= scale;
             return swap ? new Vector3(v.x, v.z, v.y) : v;
         }
+        // 8-byte EMD weight format = [weight8, rawBoneId8] repeated 4 times.
+        // The importer's piecewise node remapping is inverted exhaustively.
+        private static byte EncodeBoneId(EmdDocument template, SourcePolygon part, int boneIndex,
+            int node1, int node2, int node3)
+        {
+            if (boneIndex < 0 || boneIndex >= template.Bones.Count)
+                throw new InvalidDataException(part.name +
+                    ": FBX references a bone outside original EMD hierarchy: " + boneIndex);
+            int desiredNode = template.Bones[boneIndex].NodeID;
+            for (int raw = 1; raw <= 256; raw++)
+            {
+                int node = raw >= node3 + 1 ? raw + node2 - node3 : raw + node1;
+                if (node == desiredNode) return (byte)(raw - 1);
+            }
+            throw new InvalidDataException(part.name +
+                ": original EMD group cannot encode FBX bone index " + boneIndex +
+                " (node ID " + desiredNode + "). Use a compatible FBX rig/bone.");
+        }
+
+        private static void WriteNativeFbxSkinWeights(byte[] destination, Mesh mesh,
+            EmdDocument document, SourcePolygon part, byte[] original, int vertexCount)
+        {
+            if (document.Bones.Count == 0)
+                throw new InvalidDataException(part.name +
+                    ": original EMD has no bone table. Native skin weight export requires bones.");
+            BoneWeight[] source = mesh.boneWeights;
+            if (source.Length != vertexCount)
+                throw new InvalidDataException(part.name +
+                    ": FBX skin weights missing for vertex count " + vertexCount +
+                    ". For unskinned FBX, enable rigid-bind to an original EMD bone in Direct FBX Export.");
+            int node1 = U16(original, part.group + 0x24) / 0x30;
+            int node2 = U16(original, part.group + 0x26) / 0x30;
+            int node3 = U16(original, part.group + 0x28) / 0x30;
+            // Resolve the zero-weight fallback ID once per source polygon.
+            int fallback = -1;
+            for (int i = 0; i < document.Bones.Count; ++i)
+            {
+                try
+                {
+                    EncodeBoneId(document, part, i, node1, node2, node3);
+                    fallback = i;
+                    break;
+                }
+                catch (InvalidDataException) { }
+            }
+            if (fallback < 0)
+                throw new InvalidDataException(part.name + ": no EMD bone can be encoded by this group.");
+            byte fallbackId = EncodeBoneId(document, part, fallback, node1, node2, node3);
+            for (int v = 0; v < vertexCount; ++v)
+            {
+                BoneWeight b = source[v];
+                int[] ids = { b.boneIndex0, b.boneIndex1, b.boneIndex2, b.boneIndex3 };
+                float[] sourceWeights = { b.weight0, b.weight1, b.weight2, b.weight3 };
+                float total = 0f;
+                for (int k = 0; k < 4; k++)
+                {
+                    float w = sourceWeights[k];
+                    if (float.IsNaN(w) || float.IsInfinity(w) || w < 0f)
+                        throw new InvalidDataException(part.name + ": invalid FBX skin weight at vertex " + v);
+                    if (w > 0f && (ids[k] < 0 || ids[k] >= document.Bones.Count))
+                        throw new InvalidDataException(part.name +
+                            ": FBX bone mapping invalid at vertex " + v + ", channel " + k);
+                    total += w;
+                }
+                if (total < 1e-6f)
+                    throw new InvalidDataException(part.name +
+                        ": FBX has zero total skin weight at vertex " + v);
+                int[] outBytes = new int[4];
+                float[] remainder = new float[4];
+                int assigned = 0;
+                for (int k = 0; k < 4; k++)
+                {
+                    float scaled = (sourceWeights[k] / total) * 255f;
+                    outBytes[k] = Mathf.FloorToInt(scaled);
+                    remainder[k] = scaled - outBytes[k];
+                    assigned += outBytes[k];
+                }
+                while (assigned < 255)
+                {
+                    int largest = 0;
+                    for (int k = 1; k < 4; k++)
+                        if (remainder[k] > remainder[largest]) largest = k;
+                    outBytes[largest]++;
+                    remainder[largest] = -1f;
+                    assigned++;
+                }
+                for (int k = 0; k < 4; ++k)
+                {
+                    destination[v * 8 + k * 2] = (byte)outBytes[k];
+                    destination[v * 8 + k * 2 + 1] =
+                        outBytes[k] > 0
+                            ? EncodeBoneId(document, part, ids[k], node1, node2, node3)
+                            : fallbackId;
+                }
+            }
+        }
+
+        private static void WriteNativeFbxNormals(byte[] destination, Mesh mesh,
+            bool swap, int vertices, string name)
+        {
+            Vector3[] normals = mesh.normals;
+            if (normals.Length != vertices)
+                throw new InvalidDataException(name +
+                    ": FBX normal count mismatch. Enable Import Normals in FBX import settings.");
+            for (int i = 0; i < vertices; i++)
+            {
+                Vector3 n = swap
+                    ? new Vector3(normals[i].x, normals[i].z, normals[i].y)
+                    : normals[i];
+                if (float.IsNaN(n.x) || float.IsInfinity(n.x) ||
+                    float.IsNaN(n.y) || float.IsInfinity(n.y) ||
+                    float.IsNaN(n.z) || float.IsInfinity(n.z) ||
+                    n.sqrMagnitude < 1e-10f)
+                    throw new InvalidDataException(name + ": invalid FBX normal #" + i);
+                n.Normalize();
+                WriteF32(destination, i * 12, n.x);
+                WriteF32(destination, i * 12 + 4, n.y);
+                WriteF32(destination, i * 12 + 8, n.z);
+            }
+        }
+
         private static byte[] IndicesAsBytes(int[] indices, int vertexCount, bool reverse)
         {
             var result = new byte[checked(indices.Length * 2)];
@@ -364,6 +490,11 @@ namespace MusafirEx.EMD2Unity
                 if (polyCount < 1 || polyCount > 32 || originalPolyStart < 0xB0 ||
                     oldUV <= originalPolyStart || oldUV >= original.Length)
                     throw new InvalidDataException("Unsupported source polygon/UV offsets.");
+                EmdDocument originalDocument = directNativeFbxAttributes
+                    ? EmdParser.Parse(original) : null;
+                if (directNativeFbxAttributes && originalDocument.Bones.Count == 0)
+                    throw new InvalidDataException(
+                        "Native FBX bone export requires an EMD with a real bone table.");
                 var output = new List<byte>(original.Length);
                 output.AddRange(Slice(original, 0, originalPolyStart));
                 int nextPoly = originalPolyStart;
@@ -424,8 +555,12 @@ namespace MusafirEx.EMD2Unity
                                 " is " + nearestDistance.ToString("G5") +
                                 " EMD model units away from original attribute donor " +
                                 closest + ". Increase transfer limit ONLY if deliberate.");
-                        Buffer.BlockCopy(original, sp.auxStart + closest * 12, auxiliary, v * 12, 12);
-                        Buffer.BlockCopy(original, sp.weightStart + closest * 8, weights, v * 8, 8);
+                        if (!(directNativeFbxAttributes && directReplacedParts != null &&
+                              directReplacedParts.Contains(sp.name + "_" + i)))
+                        {
+                            Buffer.BlockCopy(original, sp.auxStart + closest * 12, auxiliary, v * 12, 12);
+                            Buffer.BlockCopy(original, sp.weightStart + closest * 8, weights, v * 8, 8);
+                        }
                         int oldUvByte = nextUV + closest * 8;
                         if (oldUvByte < 0 || oldUvByte > original.Length - 8)
                             throw new InvalidDataException(sp.name + ": UV source block overflow.");
@@ -433,6 +568,11 @@ namespace MusafirEx.EMD2Unity
                     }
                     bool directChangedPart = directReplacedParts == null ||
                         directReplacedParts.Contains(sp.name + "_" + i);
+                    if (directNativeFbxAttributes && directChangedPart)
+                    {
+                        WriteNativeFbxNormals(auxiliary, mesh, swap, n, sp.name);
+                        WriteNativeFbxSkinWeights(weights, mesh, originalDocument, sp, original, n);
+                    }
                     if (useEditedUv0 && directChangedPart)
                     {
                         if (meshUV == null || meshUV.Length != n)
@@ -470,8 +610,11 @@ namespace MusafirEx.EMD2Unity
                     {
                         // Exactly unchanged geometry: inherit per-index source attributes to
                         // guarantee a bit-for-bit no-op rebuild even with coincident vertices.
-                        auxiliary = Slice(original, sp.auxStart, n * 12);
-                        weights = Slice(original, sp.weightStart, n * 8);
+                        if (!(directNativeFbxAttributes && directChangedPart))
+                        {
+                            auxiliary = Slice(original, sp.auxStart, n * 12);
+                            weights = Slice(original, sp.weightStart, n * 8);
+                        }
                         if (!(useEditedUv0 && directChangedPart) &&
                             !(useEditedColors && directChangedPart))
                             uvData = Slice(original, nextUV, n * 8);
@@ -577,8 +720,11 @@ namespace MusafirEx.EMD2Unity
                 report.AppendLine("Reimport parser: PASS (" + parsed.Groups.Count + " groups)");
                 report.AppendLine("Groups with changed vertex/triangle counts: " + changedTopology);
                 report.AppendLine("Mesh groups with max donor displacement > 0.05: " + transferWarnings);
-                report.AppendLine("CAUTION: 12-byte per-vertex auxiliary data and weights were " +
-                    "transferred from original vertices. Only PS3 in-game tests can validate rendering.");
+                report.AppendLine(directNativeFbxAttributes
+                    ? "FBX native attributes: normals encoded as 3 big-endian float32 values; " +
+                      "FBX weights encoded as 4 EMD bone-ID/weight pairs per vertex on replaced groups."
+                    : "CAUTION: 12-byte per-vertex auxiliary data and weights were " +
+                      "transferred from original vertices. Only PS3 in-game tests can validate rendering.");
                 string saved = EditorUtility.SaveFilePanel(
                     "Save new topology-rebuilt _Wxx.emd", Path.GetDirectoryName(Path.GetFullPath(src)),
                     Path.GetFileNameWithoutExtension(src) + "_topology.emd", "emd");
