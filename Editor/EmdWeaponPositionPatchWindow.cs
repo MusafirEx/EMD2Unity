@@ -106,12 +106,14 @@ namespace MusafirEx.EMD2Unity
                     if (renderer != null)
                     {
                         renderer.sharedMesh = duplicate;
-                        PrefabUtility.RecordPrefabInstancePropertyModifications(renderer);
+                        if (PrefabUtility.IsPartOfPrefabInstance(renderer))
+                            PrefabUtility.RecordPrefabInstancePropertyModifications(renderer);
                     }
                     else
                     {
                         filter.sharedMesh = duplicate;
-                        PrefabUtility.RecordPrefabInstancePropertyModifications(filter);
+                        if (PrefabUtility.IsPartOfPrefabInstance(filter))
+                            PrefabUtility.RecordPrefabInstancePropertyModifications(filter);
                     }
                     clones++;
                 }
