@@ -22,6 +22,9 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private float attributeTransferLimit = 0.5f;
         private string lastReport;
         private Vector2 scroll;
+        // Set only by the one-click FBX exporter. Unmapped original EMD parts
+        // keep their original UV/color bytes rather than re-encoding imported UV0.
+        private HashSet<string> directReplacedParts;
 
         [MenuItem("Tools/EMD2Unity/Weapon EMD Topology Rebuild (Experimental)")]
         public static void Open() => GetWindow<EmdWeaponTopologyRebuildWindow>("Weapon EMD Rebuild");
@@ -123,6 +126,36 @@ namespace MusafirEx.EMD2Unity
             {
                 lastReport = "Topology test refused: " + ex.Message;
                 Debug.LogError("EMD2Unity topology test: " + ex);
+            }
+        }
+
+        // Internal one-step entry point. No intermediate mesh assets or scene
+        // copy are persisted. The caller owns and destroys the temporary root.
+        // Unknown original per-vertex bytes still use nearest original vertices,
+        // but the user's distance-threshold test is not part of this workflow.
+        internal static string ExportDirectFromFbx(
+            GameObject originalEmd, GameObject temporaryEditedRoot,
+            HashSet<string> replacedParts, bool writeFbxUv0, bool writeFbxColors)
+        {
+            if (originalEmd == null || temporaryEditedRoot == null ||
+                replacedParts == null || replacedParts.Count == 0)
+                throw new InvalidDataException("Direct export requires an original EMD, FBX meshes and mapping.");
+            var worker = CreateInstance<EmdWeaponTopologyRebuildWindow>();
+            try
+            {
+                worker.sourceWeapon = originalEmd;
+                worker.editedWeapon = temporaryEditedRoot;
+                worker.preserveIndexAttributes = false;
+                worker.useEditedUv0 = writeFbxUv0;
+                worker.useEditedColors = writeFbxColors;
+                worker.attributeTransferLimit = float.MaxValue;
+                worker.directReplacedParts = new HashSet<string>(replacedParts);
+                worker.Run();
+                return worker.lastReport;
+            }
+            finally
+            {
+                DestroyImmediate(worker);
             }
         }
 
@@ -398,7 +431,9 @@ namespace MusafirEx.EMD2Unity
                             throw new InvalidDataException(sp.name + ": UV source block overflow.");
                         Buffer.BlockCopy(original, oldUvByte, uvData, v * 8, 8);
                     }
-                    if (useEditedUv0)
+                    bool directChangedPart = directReplacedParts == null ||
+                        directReplacedParts.Contains(sp.name + "_" + i);
+                    if (useEditedUv0 && directChangedPart)
                     {
                         if (meshUV == null || meshUV.Length != n)
                             throw new InvalidDataException(sp.name + ": edited UV0 missing.");
@@ -408,7 +443,7 @@ namespace MusafirEx.EMD2Unity
                             W16(uvData, v * 8 + 6, EncodeHalf(1f - meshUV[v].y));
                         }
                     }
-                    if (useEditedColors)
+                    if (useEditedColors && directChangedPart)
                     {
                         if (meshColors == null || meshColors.Length != n)
                             throw new InvalidDataException(sp.name + ": edited vertex colors missing.");
@@ -437,7 +472,9 @@ namespace MusafirEx.EMD2Unity
                         // guarantee a bit-for-bit no-op rebuild even with coincident vertices.
                         auxiliary = Slice(original, sp.auxStart, n * 12);
                         weights = Slice(original, sp.weightStart, n * 8);
-                        if (!useEditedUv0) uvData = Slice(original, nextUV, n * 8);
+                        if (!(useEditedUv0 && directChangedPart) &&
+                            !(useEditedColors && directChangedPart))
+                            uvData = Slice(original, nextUV, n * 8);
                     }
                     byte[] originalIndexPadded = Slice(original, sp.indexStart, sp.vertexStart - sp.indexStart);
                     byte[] originalPositionPadded = Slice(original, sp.vertexStart, sp.auxStart - sp.vertexStart);
