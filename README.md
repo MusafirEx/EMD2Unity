@@ -42,6 +42,111 @@ This preset is based on user-verified STG texturing and is **on by default** for
 Stage defaults do **not** apply to non-STG character/motion models; no original game EMD, EMAT or DDS data is edited. Existing EMD subassets will be reimported when Unity detects the updated ScriptedImporter revision 16. You can confirm the actual effective parser flags in **Diagnose EMD UV Mapping (Read-only)**.
 
 
+### Gameplay stretching regression in FBX3 — diagnosis and guarded export
+
+An in-game `DRV00_W00_FBX3.emd` replacement showed stretched geometry despite passing binary parser/EMDI checks. **Real binary evidence** from original `DRV00_W00.emd` versus FBX3:
+- Original `handleblade`: **648 vertices on Weapon_j001; 447 on Weapon_j002**. FBX3 wrote **all 1195 vertices to Weapon_j001**. The 18 original `emblem_00` vertices use **Weapon_j002**, but FBX3 wrote all to Weapon_j001.
+- The source's opaque **12-byte auxiliary stream is NOT 3 conventional big-endian float32 values**. Raw source stream includes float32 NaN/denormal bit patterns and 16-bit-like packed fields, whereas the Phase 5C native-normal mode wrote ordinary big-endian float32 x3. A source MaxScript reads these as float placeholders but **does not apply them as vertex normals**; that is not proof of their game encoding.
+- Vertex indices/bounds and bone/material tables were structurally valid; these alone do not establish correct in-game animation/rendering.
+
+**New safeguards:** Direct FBX export analyzes each source EMD polygon's actual active bone influences against the destination FBX weights. **If a required source bone is absent, export refuses by default**, with a clear description of the missing bone names. Correctly skin a FBX to the existing EMD bone names in Blender (e.g. `Weapon_j001` **and** `Weapon_j002` for `handleblade`), or use **Allow missing original bone influences (unsafe)** only when deliberate. Do not use Force rigid binding to a single bone on a mixed-bone weapon if each part must animate independently.
+
+**12-byte stream compatibility:** The new default **Preserve game-packed auxiliary stream (recommended; donor fallback)** uses original EMD auxiliary bytes for compatibility, while still exporting the FBX's original **vertex positions, triangles, UV0, and actual FBX skin weights**. This limited auxiliary-only donor fallback will be retired once the 12-byte packing is decoded and a verifiable FBX encoder is available. Unchecking the option re-enables the **unverified/unsafe float32 interpretation**, which may cause gameplay stretching or shading artifacts. Do not describe this stream as ordinary XYZ float normals until proven by game evidence.
+
+For isolating the regression, three controlled `.emd` binary variants were generated from the supplied FBX3: `*_skinfix.emd` restores source bone influence bytes only, `*_auxfix.emd` restores source auxiliary bytes only, and `*_bothfix.emd` does both. The repaired copies preserve the original FBX3 positions, triangle indices, UV, and material tables; they are test controls, **not guaranteed fixes**. Source-bone/aux transfers use nearest original vertices for these *diagnostics only*, not the intended permanent native FBX rig workflow.
+
+### Phase 5C: Native FBX normals + skin weights (no original vertex donor)
+
+The **Tools → EMD2Unity → Direct FBX to Weapon EMD (Experimental)** editor now defaults to **Encode FBX normals and skin weights DIRECTLY (no nearest donor)**. This affects only FBX-replaced polygons; untouched EMD polygon data is retained.
+
+- **Vertices, triangles and UV0** come from the FBX. Native normals (or recalculated normals if the FBX has none) are transformed with the inverse transpose of the FBX transform and written as **3 big-endian float32 components** per vertex in EMD source coordinates. The original Kamen Rider PS3 3ds Max importer consumes this 12-byte stream as three floats.
+- Rigged FBX skin weight indices are remapped by **FBX bone name to original EMD bone name**. Each source polygon's existing EMD node remapping is inverted to encode up to four **[weight-byte, bone-ID-byte]** pairs. The four quantized weights are normalized to total 255. Missing or non-representable EMD bone identities are rejected, never borrowed.
+- For an unskinned/static FBX, the entire mapped mesh uses a selectable **Rigid bone for unskinned FBX** with 100% weight. For a rigged but unrelated FBX, check **Force rigid binding (ignore FBX armature/weights)** to use that same EMD bone deliberately.
+- Native mode uses **no nearest original vertex lookup** for replaced geometry, including normals, skin, UV and colors. If FBX vertex colors are not enabled, neutral opaque white is written. If optional UV export is off, UV is zero. Original EMD bone hierarchy, material assignments, polygon slots, and unmatched meshes remain intact.
+- The original weapon EMD still serves as a **binary format / bone / material template**. Standalone FBX-only creation of new EMD skeletons or materials is not yet implemented. Prior in-game successful FBX direct export used the **legacy nearest donor**; this new native attribute writer is **not yet confirmed in game**. Uncheck the native attributes option to restore the previously working algorithm if needed.
+
+Workflow: select original _Wxx.emd and the FBX root, map original polygon slots, leave **Encode FBX normals and skin weights DIRECTLY** enabled, pick an original EMD bone for rigid/unskinned geometry, click **EXPORT DIRECT FBX → NEW .EMD**, and save using a new filename.
+
+### Phase 5B: Direct FBX → Weapon EMD (one-window export, experimental)
+
+**Tools → EMD2Unity → Direct FBX to Weapon EMD (Experimental)** replaces the older two-window FBX Preparation + Topology Rebuild workflow for users who want to export immediately. **An original `_Wxx.emd` template is still required:** the existing game-specific format's bones, material assignments, polygon count, opaque 12-byte per-vertex attributes, and skin data cannot reliably be synthesized from a standalone FBX yet.
+
+**One-step workflow:**
+1. Import a Blender FBX into Unity, enable **Read/Write Enabled** under its Model import settings, and provide UV0 if you want to export new UVs.
+2. Open **Direct FBX to Weapon EMD**. Choose the **original** game `DRV00_W00.emd` as **Original Weapon .emd (template)** and choose the FBX asset or a scene instance as **FBX or Blender Model**.
+3. Each EMD polygon/material slot has a dropdown to select an FBX mesh **or FBX submesh/material slot**. `Auto-map meshes` matches identical names and maps a single FBX entry to the first EMD slot. `Map in order` assigns available entries sequentially. Leave unmapped EMD slots as original. The supported total number of polygon/material slots is determined by the original EMD; creating new slots is not supported.
+4. Enable **Bake FBX root transform** to apply the FBX root's position, scale and rotation (default). Turn it off if a scene object's root placement should be ignored. **Export FBX UV0** defaults on; vertex colors can be opted into if the FBX has them.
+5. Click **EXPORT DIRECT FBX → NEW .EMD**. The tool remaps only referenced FBX submesh vertices and triangle indices, copies geometry into transient memory, calls the existing guarded EMD binary rebuild/parse and prompts for a **new** `.emd` output filename. It will not overwrite an existing or original source file. Temporary meshes/GameObjects are destroyed after export; no intermediate `.asset` or Scene copy remains.
+
+**Direct means no preparation workflow or donor-distance threshold.** The converter **still transfers source EMD 12-byte auxiliary vertex blocks and raw 8-byte bone weights from nearest original positions**. It does not encode an FBX armature, new material assignments, faithful FBX normals/tangents or completely new EMD skeletons. For very different FBX shapes, the result may render or deform incorrectly. The prior Phase 4 native-topology test passed in game, but the arbitrary FBX direct-conversion path has **not been verified in Unity or in game yet**. Keep original game backups.
+
+### Phase 5A troubleshooting: FBX donor-distance limit exceeded
+
+If FBX preparation reports `handleblade_0: transformed vertex 392 is 1.1426 Unity units from its closest original vertex`, this is **not** a parsing error or changed-topology failure. The default safety limit in **Weapon FBX Preparation** is 1.0 Unity unit. The source and edited model positions may be misaligned, their relative scale/axis may differ, or the FBX design may genuinely extend away from the original mesh.
+
+A **read-only Analyze Mapping Distances** button is available in **Weapon FBX Preparation**. It reports (for every assigned mesh) source/FBX bounds centres/sizes, nearest-original donor max/mean/95th-percentile distances, counts exceeding the current Preparation limit, counts exceeding the separate **Topology Rebuild 0.5 EMD-unit default**, and the most distant FBX vertex/donor indices. The report is logged to the Unity Console for MCP analysis; it writes no files.
+
+1. Run the diagnostic and inspect alignment/bounds first. For obvious FBX scale/axis/position mistakes, fix its object/mesh transform in Blender or Unity and rerun.
+2. If the larger silhouette is intentional, for a controlled experiment set **Max preview donor distance (Unity units)** above the reported maximum, for example **1.2** for a 1.1426-unit outlier. This permits nearest-original skin-weight preview assignment but does **not** prove its validity.
+3. Then in **Weapon EMD Topology Rebuild**, set **Maximum donor distance (EMD model units)** above the diagnostic's reported required raw EMD radius; if the EMD importer Model Scale is 1, approximately the same value, e.g. 1.2. Turn **Prefer original vertex index for attributes OFF** for Blender-reordered meshes; turn **Write edited UV0 ON** where appropriate.
+4. For genuinely dissimilar geometry or bones, nearest original-vertex mapping may animate wrongly; this is an acknowledged limitation, not something an arbitrarily high threshold fixes. Keep backups and inspect in-game results.
+
+### Phase 5A: Prepare Blender/FBX meshes for an existing weapon EMD (EXPERIMENTAL)
+
+**Tools → EMD2Unity → Weapon FBX Preparation (Experimental)** is a separate editor tool added after the successful user-reported in-game +1-vertex/+1-triangle topology rebuild of `DRV00_W00_topology.emd`. Unlike the earlier test, this prepares geometry from an imported Blender FBX without assuming its vertex count/order matches the original source weapon.
+
+1. Import a Blender FBX into Unity. It must have readable meshes (**Read/Write Enabled**), triangle topology and **one material/submesh per imported mesh**. For multiple material slots, split them into separate objects in Blender. Export UV0 for every vertex.
+2. In **Weapon FBX Preparation**, assign the original `DRV00_W00.emd` to **Original Weapon**, and your FBX asset or scene instance to **FBX / Blender Root**. One dropdown per original polygon group maps a **specific FBX mesh** to `handleblade_0`, `emblem_00_1`, `car_wild_2`, or `car_vegas_3`. Unmapped groups retain their original geometry. **Auto-map exact mesh names** is optional; manual mapping accepts arbitrary imported mesh names and nested FBX hierarchy.
+3. Click **Create Prepared Weapon Scene Copy**. This bakes every chosen FBX child mesh's transform relative to its FBX root, corrects mirrored triangle winding, and creates a NEW native-EMD-based weapon Scene instance with independent `.asset` meshes under `Assets/EMD2Unity_Editable/`. The imported FBX and original EMD are untouched. The existing EMD skeleton and mesh group names are preserved; for Unity preview, native EMD bone weights are assigned using the nearest original vertex. Vertices beyond the configured donor-distance threshold are **rejected** to avoid blindly assigning unrelated skinning.
+4. Open **Weapon EMD Topology Rebuild (Experimental)**, assign **Original _Wxx.emd** to the original EMD, and **Edited Scene/FBX Root** to the selected prepared Scene copy. **Turn OFF** `Prefer original vertex index for attributes` for Blender-reordered vertices, and **turn ON** `Write edited mesh UV0`. You may also turn on **Write edited mesh vertex colors** if you specifically want the prepared colors encoded into the original EMD color order. Export to a new `*_fbx_test.emd` and verify parser output plus visual/game tests.
+5. Start with replacing **only `handleblade_0`** using a simple Blender mesh in roughly the same size/location as the original. Keep the source `.emdi` intact; do not change material or bone counts. Back up the game before testing on RPCS3.
+
+**Limits:** EMD polygon count/material slots are fixed; the input must be divided into existing EMD groups. The EMD 12-byte auxiliary vertex data is **not yet fully reverse-engineered**, so the exporter copies it and the original bone-weight bytes from nearest native EMD vertices. FBX skinning, armature changes, normals and tangents are **not faithfully encoded into the game file**; FBX normals are recalculated only for Unity preview. It is possible for an FBX preparation to look correct in Unity but shade/deform incorrectly in game. The proven position-patch and Phase 4 controlled +1 triangle remain untouched. Phase 5A's actual arbitrary FBX game compatibility is **not yet verified**.
+
+### Experimental Weapon EMD Topology Rebuild (Phase 4, unverified in-game)
+
+Use **Tools → EMD2Unity → Weapon EMD Topology Rebuild (Experimental)** in the draft branch. This is a separate, opt-in tool from the proven position-only patcher. It accepts a changed triangle and vertex count per **existing** weapon mesh from an editable EMD copy or a readable FBX, while preserving the original number of polygon groups, group names, materials, bone hierarchy and other top-level EMD sections.
+
+- Select the native `_Wxx.emd` as **Original**, and a readable edited Scene/FBX root with matching direct-child mesh names as **Edited**. Mesh child local transforms must be identity and each mesh must have exactly one triangle submesh.
+- For a controlled test, use **Create Editable Weapon Copy from Original EMD** in the older Position Patch window, then assign that new Scene root to Topology Rebuild and click **Add 1 Test Vertex + 1 Triangle to Editable handleblade**. The test duplicates vertex 0 at a 0.05-unit X offset and adds one triangle. For original DRV weapon the expected edited `handleblade_0` is **1,096 vertices and 1,049 triangles**, while the other three groups stay unchanged.
+- Click **Rebuild NEW Weapon EMD**, save to a *new* filename (no overwrite), and let the bundled EMD parser validate the reconstructed result. The exporter logs the old/new byte sizes, SHA-256 and per-mesh counts. A locally mirrored **binary-layout proof** recreated the unmodified `DRV00_W00.emd` byte-for-byte (86,432 bytes, same SHA-256), and generated a structurally well-bounded 86,448-byte synthetic EMD for an added vertex+triangle. Actual Unity execution of this alpha tool and the modified-topology game's acceptance remain **unverified**.
+- Rebuilds indexed 16-byte-aligned triangle, XYZ, 12-byte auxiliary and skin-weight streams, source 8-byte UV-color records, group-relative pointers and polygon/global offsets and bounding boxes. This is restricted to the verified single-group polygon type `0x0004` with 8-byte per-vertex UV records. Source `*.emdi` is left unchanged (material order/count cannot change).
+- **Important limits:** The extra 12-byte per-vertex data stream has **not** been decoded. This tool transfers its bytes and original 8-byte bone-weight data from the closest original vertex, rather than generating correct new normals or bone assignments. Attribute transfer is constrained by the configurable maximum donor distance. Optional **Write edited UV0** re-encodes UV0 as big-endian half-floats; source vertex colors are otherwise transferred. Bones/materials must remain identical, and all unfamiliar source layouts are rejected. For substantially different weapon designs, this nearest-neighbor transfer is not reliable. Backup the game and inspect the output in Unity before PS3 testing.
+
+The existing **Weapon EMD Round-Trip Audit** is a **same-layout** audit: it intentionally rejects rebuilt EMDs whose byte size differs. Use the new topology tool's parser and size report for Phase 4, and manually compare gameplay/rendering. Do not merge this experimental topology tool into a proven workflow without a successful in-game test.
+
+### Fix FBX vertex-count mismatches without rebuilding EMD topology
+
+The strict weapon patch exporter cannot accept FBX meshes that differ from the original EMD vertex count or triangle order. In this case it reports the **original EMD expected count**, **source imported Mesh count** and **edited Mesh count** for the specific named group. This is intentional: writing an FBX mesh with new topology into the original fixed-size EMD buffers would corrupt offsets, index topology and skin weights.
+
+For a safe **first actual modified-vertex test**, open **Tools → EMD2Unity → Weapon EMD Position Patch (Experimental)** and choose the **original imported `DRV00_W00.emd`** as source. Click **Create Editable Weapon Copy from Original EMD**. The tool creates a scene instance with four separately cloned, persisted mesh `.asset` files under `Assets/EMD2Unity_Editable/...`; it does not modify the original EMD. The new scene instance is automatically placed in **Edited Model Root**. Click **Apply Test Offset to handleblade_0 (Vertex #0)** with the default X = `+0.05` to change one position without disturbing topology, then export to a new `DRV00_W00_modified.emd`. Use the **Weapon EMD Round-Trip Audit** to verify **1 changed vertex / 0 unexpected non-position bytes**, then test in the PS3 game.
+
+This workaround supports controlled position-only edits of the **native EMD topology**. It does NOT turn arbitrary FBX/Blender mesh replacement into a general EMD exporter. That requires a separate binary rebuild supporting changed vertex/index counts, UV/weight buffers, and offset updates.
+
+### Verify a weapon EMD export byte-for-byte
+
+After importing `DRV00_W00_patched.emd` in Unity, use **Tools → EMD2Unity → Weapon EMD Round-Trip Audit (Experimental)**. Assign **Original Weapon .emd** to `DRV00_W00.emd` and **Patched Weapon .emd** to `DRV00_W00_patched.emd`, then click **Compare Binary EMD Files**. The tool reads the two source files (not Unity mesh previews) and checks identical file lengths, polygon layout, bone/material/UV/skin/index/unknown data bytes and exactly which float32 position bytes changed. It reports source/target SHA-256, changed byte counts, each mesh's changed vertex count/max position delta and **PASS / FAIL**.
+
+- **PASS — byte-identical no-change round-trip** is the required first acceptance test.
+- **PASS — XYZ position-only changes** allows the next modified-blade experiment; PS3 compatibility still needs an in-game test.
+- **FAIL — non-position data differs** means the file should not be deployed as a position-only replacement.
+
+The audit is strictly read-only and logs the complete report to Unity Console, where it can be read again via the Unity MCP bridge. This lets us verify the user's exported EMD even when the MCP cannot directly download raw binary project assets. Click **Copy Audit Report** to share the detailed results.
+
+### Experimental weapon EMD position-only patch (draft branch)
+
+The `feat/weapon-emd-position-patch-prototype` branch adds **Tools → EMD2Unity → Weapon EMD Position Patch (Experimental)**. This is deliberately **not** a general EMD exporter: it edits only the 12-byte big-endian XYZ positions in a copy of an original `_Wxx.emd`. The imported file's bone matrices/IDs, weight records, vertex order, triangle indices, materials, UV coordinates, vertex colors, unknown header fields and original bytes otherwise remain untouched. It never writes the original source asset.
+
+Verified source sample: `DRV00_W00.emd` from the user (86,432 bytes), with 4 single-group type-0x0004 polygons, 1,754 vertices, 1,596 triangles, 3 bones and 3 materials. Each UV record is 8 bytes and every vertex is weighted to exactly one bone. A Python byte-for-byte unmodified XYZ coordinate round-trip across all vertices reproduced the original SHA-256 exactly. This does **not** establish that arbitrary edited models are accepted by the PS3 game.
+
+1. In the Unity **Project**, select the imported original `DRV00_W00.emd` GameObject asset and duplicate a copy as an editable model (or use a copy of its mesh assets). Keep all existing mesh children named `handleblade_0`, `emblem_00_1`, `car_wild_2`, `car_vegas_3`, and their identity local transforms.
+2. Modify **only vertex positions** on readable, independently duplicated meshes. Never edit the original imported mesh asset (which would be overwritten on reimport). Do not change triangle/vertex order, weight assignments, material count or bone hierarchy.
+3. Open **Tools → EMD2Unity → Weapon EMD Position Patch (Experimental)**. Drag the original `.emd` imported GameObject into **Original .emd Model Asset**, and the edited scene/prefab root into **Edited Model Root**.
+4. Export to a **new path** (e.g., `DRV00_W00_patched.emd`). For the first no-op test, use the unmodified original as both source and edited model; the output should be byte-identical.
+5. Reimport the patched EMD in a separate Unity test folder and compare mesh vertex counts, UVs, attachment bones and shading before any game replacement. Preserve a backup of the game archive/source.
+
+Strict limitations: only single-group polygon type `0x0004`, source filename matching `_Wxx.emd`, identical triangle array and skin weights, identical mesh child names and identity transforms, and unchanged materials/UVs. New topology, arbitrary FBX vertex ordering, new bones, changed weights, animation and EMDI generation are **not** supported. Since this patch does not change material entries or their ordering, retain the **original matching EMDI** for the initial weapon replacement test. Unity compilation and actual PS3 compatibility are pending independent validation.
+
 ## How to use
 
 1. Extract `.EMD` model files from your own game files. This package does not extract NCAT archives or package game assets.
