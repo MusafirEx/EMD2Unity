@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — FBX3 in-game stretched-mesh regression safeguards
+
+- Real-file comparison found an important skeleton regression despite valid parser: original `handleblade` uses **648 Weapon_j001 + 447 Weapon_j002**, original `emblem_00` uses **Weapon_j002**, but FBX3 bound all 1,886 vertices to **Weapon_j001**.
+- The legacy 12-byte source attribute stream is *not* plain float32 x3; native float32 XYZ serializing it is unsafe despite parser acceptance. Original PS3 MaxScript treats this region as a placeholder and does not prove its actual normal encoding.
+- Direct exporter now **validates active FBX bone influences per replaced original EMD polygon** and refuses missing native source bones by default. Explicit opt-in `Allow missing original bone influences (unsafe)` permits purposeful bone collapse.
+- New default native/FBX-skin option **Preserve game-packed auxiliary stream (recommended; donor fallback)** keeps the original 12-byte auxiliary record format until its encoding is understood, while still writing *FBX-native bone weights* and FBX geometry. Unsafe old float32 auxiliary remains opt-in for diagnostics.
+- Three binary comparison variants created from the user's actual FBX3: skin-only, auxiliary-only, and combined source-attribute replacements (diagnostic, not an assertion of in-game success).
+- Unity compilation and in-game behavior of the new guarded exporter are not yet confirmed. Previously documented Phase 5C native-normal success was limited to **structural reimport**, not correct gameplay rendering.
+
 ## Unreleased (experimental branch) — Phase 5C native FBX normals + weights
 
 - Direct FBX export defaults to **FBX-sourced normals and bone weights** instead of nearest original-vertex attributes for changed polygon groups. The existing in-game-accepted legacy donor method remains accessible by unchecking the new option.
