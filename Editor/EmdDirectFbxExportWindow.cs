@@ -23,6 +23,8 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private bool exportNativeFbxAttributes = true;
         [SerializeField] private int rigidUnskinnedBoneIndex = 0;
         [SerializeField] private bool forceRigidBone = false;
+        [SerializeField] private bool allowBoneCollapse = false;
+        [SerializeField] private bool keepOriginalPackedAuxiliary = true;
         [SerializeField] private int[] mapping = new int[32];
         private Vector2 scrollPosition;
         private string report;
@@ -169,14 +171,28 @@ namespace MusafirEx.EMD2Unity
                 exportNativeFbxAttributes);
             if (exportNativeFbxAttributes)
                 EditorGUILayout.HelpBox(
-                    "Game EMD stores each normal as XYZ float32 and each vertex's skinning " +
-                    "as four weight/bone-ID pairs. FBX bone names must match original EMD " +
-                    "bone names. Unskinned FBX meshes use the selected rigid bone. " +
-                    "For unrelated FBX rigs, enable Force rigid binding.",
+                    "FBX skin weights are encoded to the source EMD bone IDs. " +
+                    "IMPORTANT: the original 12-byte secondary vertex stream is NOT plain " +
+                    "float32 normals; preserve its native byte layout until the game " +
+                    "normal/tangent packing is reverse engineered. " +
+                    "FBX bone names must match EMD bone names.",
                     MessageType.Info);
             if (exportNativeFbxAttributes)
+            {
                 forceRigidBone = EditorGUILayout.ToggleLeft(
                     "Force rigid binding (ignore FBX armature/weights)", forceRigidBone);
+                keepOriginalPackedAuxiliary = EditorGUILayout.ToggleLeft(
+                    "Preserve game-packed auxiliary stream (recommended; donor fallback)",
+                    keepOriginalPackedAuxiliary);
+                if (!keepOriginalPackedAuxiliary)
+                    EditorGUILayout.HelpBox(
+                        "Experimental float32 normals corrupt the native packed 12-byte stream " +
+                        "in the tested source. Use ONLY for investigating the packing format.",
+                        MessageType.Error);
+                allowBoneCollapse = EditorGUILayout.ToggleLeft(
+                    "Allow missing original bone influences (unsafe, may stretch mesh)",
+                    allowBoneCollapse);
+            }
             EditorGUILayout.HelpBox(
                 "A single FBX mesh with multiple material submeshes is treated as " +
                 "multiple selectable geometry entries. Assign FBX entries to existing " +
@@ -505,6 +521,41 @@ namespace MusafirEx.EMD2Unity
             throw new InvalidDataException("Original weapon clone is missing polygon child " + name);
         }
 
+        private static string BoneNames(EmdDocument document, HashSet<int> ids)
+        {
+            var result = new List<string>();
+            foreach (int id in ids)
+                if (id >= 0 && id < document.Bones.Count)
+                    result.Add(document.Bones[id].Name);
+            result.Sort(StringComparer.Ordinal);
+            return string.Join(", ", result.ToArray());
+        }
+
+        private static HashSet<int> ActiveBones(EmdWeight[] weights)
+        {
+            var result = new HashSet<int>();
+            if (weights == null) return result;
+            foreach (EmdWeight w in weights)
+                for (int k = 0; k < 4; ++k)
+                    if (w.Values[k] > 0f && w.Indices[k] >= 0)
+                        result.Add(w.Indices[k]);
+            return result;
+        }
+
+        private static HashSet<int> ActiveBones(BoneWeight[] weights)
+        {
+            var result = new HashSet<int>();
+            if (weights == null) return result;
+            foreach (BoneWeight w in weights)
+            {
+                if (w.weight0 > 0f) result.Add(w.boneIndex0);
+                if (w.weight1 > 0f) result.Add(w.boneIndex1);
+                if (w.weight2 > 0f) result.Add(w.boneIndex2);
+                if (w.weight3 > 0f) result.Add(w.boneIndex3);
+            }
+            return result;
+        }
+
         private void ExportNow(List<OriginalSlot> original, List<InputSlot> inputs)
         {
             GameObject temporary = null;
@@ -545,6 +596,30 @@ namespace MusafirEx.EMD2Unity
                         input, fbxSource, bakeRootTransform, exportFbxUv0,
                         exportFbxColors, exportNativeFbxAttributes,
                         emd, rigidUnskinnedBoneIndex, forceRigidBone);
+                    if (exportNativeFbxAttributes)
+                    {
+                        if (emd == null || i >= emd.Groups.Count)
+                            throw new InvalidDataException("Cannot inspect source polygon bone influences.");
+                        HashSet<int> originalBones = ActiveBones(emd.Groups[i].Weights);
+                        HashSet<int> exportedBones = ActiveBones(created.boneWeights);
+                        var missing = new HashSet<int>(originalBones);
+                        missing.ExceptWith(exportedBones);
+                        if (missing.Count > 0)
+                        {
+                            string warning = original[i].name +
+                                ": original game polygon uses bones [" +
+                                BoneNames(emd, originalBones) + "] but new FBX uses [" +
+                                BoneNames(emd, exportedBones) + "]. Missing bone influences [" +
+                                BoneNames(emd, missing) + "].";
+                            if (!allowBoneCollapse)
+                                throw new InvalidDataException(warning +
+                                    " This can stretch or detach geometry in game. " +
+                                    "Skin the FBX mesh to the matching source EMD bones in Blender, " +
+                                    "or explicitly enable Allow missing original bone influences " +
+                                    "(unsafe).");
+                            summary.AppendLine("UNSAFE BONE COLLAPSE: " + warning);
+                        }
+                    }
                     newMeshes.Add(created);
                     sourceMeshes[i] = created;
                     replacement.Add(original[i].name);
@@ -571,14 +646,19 @@ namespace MusafirEx.EMD2Unity
                         original[i].name + ": no MeshRenderer/MeshFilter in original EMD.");
                 }
                 summary.AppendLine(exportNativeFbxAttributes
-                    ? "Native FBX geometry, normals and skin weights encoded into EMD. " +
-                      "FBX rig bone names matched to source EMD skeleton; " +
-                      "unskinned/forced-rigid meshes bound to selected EMD bone. No nearest-vertex donor."
+                    ? "Native FBX geometry and skin weights encoded into EMD. " +
+                      (keepOriginalPackedAuxiliary
+                          ? "The 12-byte game-packed auxiliary stream uses a conservative " +
+                            "nearest-source-vertex compatibility fallback; FBX normal float32 " +
+                            "is NOT emitted."
+                          : "WARNING: experimental float32 auxiliary data may corrupt game rendering.") +
+                      " FBX rig bone names map to existing EMD skeleton."
                     : "Legacy mode: original EMD per-vertex normal/skin attributes " +
                       "transferred from nearest original vertex.");
                 string result = EmdWeaponTopologyRebuildWindow.ExportDirectFromFbx(
                     originalEmd, temporary, replacement, exportFbxUv0,
-                    exportFbxColors, exportNativeFbxAttributes);
+                    exportFbxColors, exportNativeFbxAttributes,
+                    keepOriginalPackedAuxiliary);
                 report = summary + "\n" + result;
                 Debug.Log(report);
             }
