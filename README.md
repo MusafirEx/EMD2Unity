@@ -42,6 +42,19 @@ This preset is based on user-verified STG texturing and is **on by default** for
 Stage defaults do **not** apply to non-STG character/motion models; no original game EMD, EMAT or DDS data is edited. Existing EMD subassets will be reimported when Unity detects the updated ScriptedImporter revision 16. You can confirm the actual effective parser flags in **Diagnose EMD UV Mapping (Read-only)**.
 
 
+### Gameplay stretching regression in FBX3 — diagnosis and guarded export
+
+An in-game `DRV00_W00_FBX3.emd` replacement showed stretched geometry despite passing binary parser/EMDI checks. **Real binary evidence** from original `DRV00_W00.emd` versus FBX3:
+- Original `handleblade`: **648 vertices on Weapon_j001; 447 on Weapon_j002**. FBX3 wrote **all 1195 vertices to Weapon_j001**. The 18 original `emblem_00` vertices use **Weapon_j002**, but FBX3 wrote all to Weapon_j001.
+- The source's opaque **12-byte auxiliary stream is NOT 3 conventional big-endian float32 values**. Raw source stream includes float32 NaN/denormal bit patterns and 16-bit-like packed fields, whereas the Phase 5C native-normal mode wrote ordinary big-endian float32 x3. A source MaxScript reads these as float placeholders but **does not apply them as vertex normals**; that is not proof of their game encoding.
+- Vertex indices/bounds and bone/material tables were structurally valid; these alone do not establish correct in-game animation/rendering.
+
+**New safeguards:** Direct FBX export analyzes each source EMD polygon's actual active bone influences against the destination FBX weights. **If a required source bone is absent, export refuses by default**, with a clear description of the missing bone names. Correctly skin a FBX to the existing EMD bone names in Blender (e.g. `Weapon_j001` **and** `Weapon_j002` for `handleblade`), or use **Allow missing original bone influences (unsafe)** only when deliberate. Do not use Force rigid binding to a single bone on a mixed-bone weapon if each part must animate independently.
+
+**12-byte stream compatibility:** The new default **Preserve game-packed auxiliary stream (recommended; donor fallback)** uses original EMD auxiliary bytes for compatibility, while still exporting the FBX's original **vertex positions, triangles, UV0, and actual FBX skin weights**. This limited auxiliary-only donor fallback will be retired once the 12-byte packing is decoded and a verifiable FBX encoder is available. Unchecking the option re-enables the **unverified/unsafe float32 interpretation**, which may cause gameplay stretching or shading artifacts. Do not describe this stream as ordinary XYZ float normals until proven by game evidence.
+
+For isolating the regression, three controlled `.emd` binary variants were generated from the supplied FBX3: `*_skinfix.emd` restores source bone influence bytes only, `*_auxfix.emd` restores source auxiliary bytes only, and `*_bothfix.emd` does both. The repaired copies preserve the original FBX3 positions, triangle indices, UV, and material tables; they are test controls, **not guaranteed fixes**. Source-bone/aux transfers use nearest original vertices for these *diagnostics only*, not the intended permanent native FBX rig workflow.
+
 ### Phase 5C: Native FBX normals + skin weights (no original vertex donor)
 
 The **Tools → EMD2Unity → Direct FBX to Weapon EMD (Experimental)** editor now defaults to **Encode FBX normals and skin weights DIRECTLY (no nearest donor)**. This affects only FBX-replaced polygons; untouched EMD polygon data is retained.
