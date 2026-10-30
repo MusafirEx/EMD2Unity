@@ -28,6 +28,7 @@ namespace MusafirEx.EMD2Unity
         // FBX direct-export path: use actual FBX normals and FBX bone weights,
         // never borrow original per-vertex attributes for replaced groups.
         private bool directNativeFbxAttributes;
+        private bool directPreservePackedAuxiliary;
 
         [MenuItem("Tools/EMD2Unity/Weapon EMD Topology Rebuild (Experimental)")]
         public static void Open() => GetWindow<EmdWeaponTopologyRebuildWindow>("Weapon EMD Rebuild");
@@ -139,7 +140,7 @@ namespace MusafirEx.EMD2Unity
         internal static string ExportDirectFromFbx(
             GameObject originalEmd, GameObject temporaryEditedRoot,
             HashSet<string> replacedParts, bool writeFbxUv0, bool writeFbxColors,
-            bool useNativeFbxAttributes)
+            bool useNativeFbxAttributes, bool preservePackedAuxiliary)
         {
             if (originalEmd == null || temporaryEditedRoot == null ||
                 replacedParts == null || replacedParts.Count == 0)
@@ -155,6 +156,8 @@ namespace MusafirEx.EMD2Unity
                 worker.attributeTransferLimit = float.MaxValue;
                 worker.directReplacedParts = new HashSet<string>(replacedParts);
                 worker.directNativeFbxAttributes = useNativeFbxAttributes;
+                worker.directPreservePackedAuxiliary =
+                    useNativeFbxAttributes && preservePackedAuxiliary;
                 worker.Run();
                 if (string.IsNullOrEmpty(worker.lastReport) ||
                     worker.lastReport.StartsWith("EMD topology rebuild refused:",
@@ -555,8 +558,17 @@ namespace MusafirEx.EMD2Unity
                         min = Vector3.Min(min, p); max = Vector3.Max(max, p);
                         if (nativePart)
                         {
-                            // No original-vertex lookup for FBX-native geometry.
-                            // Default missing per-vertex colors to opaque white.
+                            // FBX vertex XYZ, UV0 and skin weights remain native.
+                            // The source auxiliary stream is NOT ordinary float32
+                            // normals; keep the game's opaque compressed bytes
+                            // as a separate optional compatibility fallback.
+                            if (directPreservePackedAuxiliary)
+                            {
+                                float distance;
+                                int donor = ClosestVertex(p, oldCoords, out distance);
+                                Buffer.BlockCopy(original,
+                                    sp.auxStart + donor * 12, auxiliary, v * 12, 12);
+                            }
                             int uv = v * 8;
                             uvData[uv] = 255; uvData[uv + 1] = 255;
                             uvData[uv + 2] = 255; uvData[uv + 3] = 255;
@@ -581,7 +593,8 @@ namespace MusafirEx.EMD2Unity
                     }
                     if (nativePart)
                     {
-                        WriteNativeFbxNormals(auxiliary, mesh, swap, n, sp.name);
+                        if (!directPreservePackedAuxiliary)
+                            WriteNativeFbxNormals(auxiliary, mesh, swap, n, sp.name);
                         WriteNativeFbxSkinWeights(weights, mesh, originalDocument, sp, original, n);
                     }
                     if (useEditedUv0 && directChangedPart)
@@ -765,8 +778,12 @@ namespace MusafirEx.EMD2Unity
                 if (!directNativeFbxAttributes)
                     report.AppendLine("Mesh groups with max donor displacement > 0.05: " + transferWarnings);
                 report.AppendLine(directNativeFbxAttributes
-                    ? "FBX native attributes: normals encoded as 3 big-endian float32 values; " +
-                      "FBX weights encoded as 4 EMD bone-ID/weight pairs per vertex on replaced groups."
+                    ? (directPreservePackedAuxiliary
+                          ? "FBX-native bone weights encoded as 4 EMD weight/bone-ID pairs; " +
+                            "native 12-byte packed auxiliary stream preserved from closest " +
+                            "source geometry ONLY for that unknown auxiliary format."
+                          : "UNSAFE experimental float32 normals written into a 12-byte stream " +
+                            "that is NOT float32 in the original EMD. Game rendering may break.")
                     : "CAUTION: 12-byte per-vertex auxiliary data and weights were " +
                       "transferred from original vertices. Only PS3 in-game tests can validate rendering.");
                 string saved = EditorUtility.SaveFilePanel(
