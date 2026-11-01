@@ -483,10 +483,15 @@ namespace MusafirEx.EMD2Unity
 
         private byte[] BuildTemplate(Analysis a)
         {
-            if (a.maxInverseDeviation > 0.05f && !allowUnverifiedBindMatrix)
-                throw new InvalidDataException("Original EMD second bone matrix differs from inverse local " +
-                    "(maximum difference " + a.maxInverseDeviation.ToString("G6") +
-                    "). Its meaning is unverified. Use read-only diagnostics or explicitly opt in to unsafe testing.");
+            if (a.secondaryMatrixKind == SecondaryMatrixKind.Unknown && !allowUnverifiedBindMatrix)
+                throw new InvalidDataException(
+                    "Second EMD bone matrix has no verified inverse-local or inverse-world " +
+                    "relation across the original skeleton. Maximum differences: " +
+                    "inverse local=" + a.maxInverseDeviation.ToString("G6") +
+                    ", inverse world=" + a.maxWorldInverseDeviation.ToString("G6") +
+                    ". No file was written. Click Analyze selected GameObject to copy " +
+                    "per-bone diagnostic values; do NOT use the unsafe override without " +
+                    "studying the original DRV00_W00.emd bone bytes.");
             int added = a.bones.Length;
             int delta = checked(added * BoneRecordSize);
             if (a.original.Length > MaxFileBytes - delta)
@@ -500,25 +505,54 @@ namespace MusafirEx.EMD2Unity
             var boneIndices = new Dictionary<Transform, int>();
             for (int i = 0; i < a.bones.Length; i++)
                 boneIndices[a.bones[i]] = oldCount + i;
+
+            Matrix4x4 attachmentWorld = a.originalWorldMatrices[attachmentBoneIndex];
+            if (Mathf.Abs(attachmentWorld.determinant) < 1e-8f)
+                throw new InvalidDataException(
+                    "The selected original attachment bone has a degenerate matrix. " +
+                    "Cannot transform replacement ROOT into its parent space.");
+            var appendedWorld = new Matrix4x4[a.bones.Length];
             for (int i = 0; i < a.bones.Length; i++)
             {
                 Transform t = a.bones[i];
                 int dest = a.oldBoneEnd + i * BoneRecordSize;
-                // Preserve all unknown record fields from an original bone.
+                // Preserve *unknown* bytes from a valid original record.
                 int donor = a.boneStart + (oldCount - 1) * BoneRecordSize;
                 Buffer.BlockCopy(a.original, donor, result, dest, BoneRecordSize);
                 PutName(result, dest + 0x10, 32, t.name);
                 int parent = t == a.rigRoot ? attachmentBoneIndex : boneIndices[t.parent];
                 Put32(result, dest + 0x110, parent);
                 Put32(result, dest + 0x118, nextNode + i - 1);
-                Matrix4x4 local = SourceBoneMatrix(t, a.rigRoot,
+
+                // The source root is authored in model space, but its parent
+                // in the output is an existing weapon attachment bone. Solve
+                // its NEW local basis relative to that original parent.
+                Matrix4x4 sourceLocal = SourceBoneMatrix(t, a.rigRoot,
                     sourceGameObject.transform, a.modelScale, a.swapYAndZ);
+                Matrix4x4 local = t == a.rigRoot
+                    ? attachmentWorld.inverse * sourceLocal : sourceLocal;
                 if (Mathf.Abs(local.determinant) < 1e-8f)
                     throw new InvalidDataException("Degenerate source bone: " + t.name);
+                appendedWorld[i] = t == a.rigRoot
+                    ? attachmentWorld * local
+                    : appendedWorld[parent - oldCount] * local;
                 PutMatrix(result, dest + 0x120, local);
-                // This second matrix is unverified in the game; the working
-                // hypothesis is inverse local/bind. Must be game-tested.
-                PutMatrix(result, dest + 0x160, local.inverse);
+
+                // The *entire original skeleton* must agree on which
+                // secondary matrix interpretation is used before writing it.
+                // A failed heuristic does not silently become inverse-local.
+                if (a.secondaryMatrixKind == SecondaryMatrixKind.InverseWorld)
+                {
+                    if (Mathf.Abs(appendedWorld[i].determinant) < 1e-8f)
+                        throw new InvalidDataException("Degenerate appended world matrix: " + t.name);
+                    PutMatrix(result, dest + 0x160, appendedWorld[i].inverse);
+                }
+                else if (a.secondaryMatrixKind == SecondaryMatrixKind.InverseLocal)
+                    PutMatrix(result, dest + 0x160, local.inverse);
+                else if (!allowUnverifiedBindMatrix)
+                    throw new InvalidDataException("Unverified second bone matrix.");
+                // Explicit UNSAFE mode preserves the donor's raw secondary
+                // bytes rather than fabricating an unjustified inverse.
             }
             Put32(result, 0x2C, oldCount + added);
             Put32(result, 0x58, a.materialStart + delta);
