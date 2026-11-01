@@ -587,7 +587,10 @@ namespace MusafirEx.EMD2Unity
                                 m.mesh.vertexCount + " vertices; " +
                                 m.mesh.GetIndexCount(0) / 3 + " triangles; material " +
                                 a.materials[i].sourceMaterialName + "; texture " +
-                                a.materials[i].sourceTextureName + ")");
+                                a.materials[i].sourceTextureName +
+                                "; rendererEnabled=" + m.renderer.enabled +
+                                "; activeInHierarchy=" + m.renderer.gameObject.activeInHierarchy +
+                                ")");
                         }
                         if (a.meshes.Count != a.document.Groups.Count)
                             builder.AppendLine("MAPPING REQUIRED: assign EVERY source mesh " +
