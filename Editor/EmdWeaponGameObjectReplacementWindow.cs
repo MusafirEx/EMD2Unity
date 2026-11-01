@@ -107,6 +107,18 @@ namespace MusafirEx.EMD2Unity
             return (int)value;
         }
 
+        // Unlike section offsets, bone metadata can legitimately use -1
+        // as a sentinel. Decode signed big-endian without throwing.
+        private static int BeSigned32(byte[] bytes, int offset)
+        {
+            if (offset < 0 || offset > bytes.Length - 4)
+                throw new InvalidDataException("Signed EMD field outside file.");
+            uint value = ((uint)bytes[offset] << 24) |
+                ((uint)bytes[offset + 1] << 16) |
+                ((uint)bytes[offset + 2] << 8) | bytes[offset + 3];
+            return unchecked((int)value);
+        }
+
         private static void Put32(byte[] data, int offset, int value)
         {
             if (offset < 0 || offset > data.Length - 4)
@@ -299,11 +311,11 @@ namespace MusafirEx.EMD2Unity
             for (int i = 0; i < oldBones; ++i)
             {
                 int at = boneStart + i * BoneRecordSize;
-                int rawBoneNumber = Be32(original, at + 8);
+                int rawBoneNumber = BeSigned32(original, at + 8);
                 zeroBasedHeaders &= rawBoneNumber == i;
                 oneBasedHeaders &= rawBoneNumber == i + 1;
                 int childCount = doc.Bones.Count(b => b.Parent == i);
-                int rawChildCount = Be32(original, at + 0x114);
+                int rawChildCount = BeSigned32(original, at + 0x114);
                 childCountsMatch &= rawChildCount == childCount;
                 Matrix4x4 local = doc.Bones[i].LocalMatrix;
                 Matrix4x4 world = worldMatrices[i];
@@ -537,7 +549,7 @@ namespace MusafirEx.EMD2Unity
             if (a.verifiedChildCountField)
             {
                 int originalParentField = a.boneStart + attachmentBoneIndex * BoneRecordSize + 0x114;
-                int oldChildren = Be32(a.original, originalParentField);
+                int oldChildren = BeSigned32(a.original, originalParentField);
                 Put32(result, originalParentField, checked(oldChildren + 1));
             }
             for (int i = 0; i < a.bones.Length; i++)
