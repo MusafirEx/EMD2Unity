@@ -281,20 +281,49 @@ namespace MusafirEx.EMD2Unity
                 throw new InvalidDataException("This EMD does not match the verified contiguous bone/material/polygon/UV template layout. Refusing speculative bone writes.");
             // The source parser advances by exactly 0x1A0 per bone; the
             // embedded recordSize field is not a reliable stride indicator.
+            // The importer and Random Talking Bush's MaxScript read 32
+            // floats but use ONLY the first 16 for the bone transform.
+            // The next 16 may encode inverse WORLD bind, inverse local,
+            // or something else. Compare candidates against EVERY real
+            // source bone; never assume one without evidence.
+            Matrix4x4[] worldMatrices = GetOriginalWorldMatrices(doc);
             float maxInverseError = 0f;
-            for (int i = 0; i < oldBones; i++)
+            float maxWorldInverseError = 0f;
+            float maxSameLocalError = 0f;
+            float maxSameWorldError = 0f;
+            string[] matrixDetails = new string[oldBones];
+            for (int i = 0; i < oldBones; ++i)
             {
-                int start = boneStart + i * BoneRecordSize;
-                Matrix4x4 forward = ReadMatrix(original, start + 0x120);
-                Matrix4x4 reverse = ReadMatrix(original, start + 0x160);
-                if (Mathf.Abs(forward.determinant) < 1e-8f)
-                {
-                    maxInverseError = float.PositiveInfinity;
-                    break;
-                }
-                maxInverseError = Mathf.Max(maxInverseError,
-                    MatrixMaxError(reverse, forward.inverse));
+                int at = boneStart + i * BoneRecordSize;
+                Matrix4x4 local = doc.Bones[i].LocalMatrix;
+                Matrix4x4 world = worldMatrices[i];
+                Matrix4x4 second = ReadAffineMatrix(original, at + 0x160);
+                float invLocalError = Mathf.Abs(local.determinant) < 1e-8f
+                    ? float.PositiveInfinity :
+                    MatrixMaxError(second, local.inverse);
+                float invWorldError = Mathf.Abs(world.determinant) < 1e-8f
+                    ? float.PositiveInfinity :
+                    MatrixMaxError(second, world.inverse);
+                float sameLocalError = MatrixMaxError(second, local);
+                float sameWorldError = MatrixMaxError(second, world);
+                maxInverseError = Mathf.Max(maxInverseError, invLocalError);
+                maxWorldInverseError = Mathf.Max(maxWorldInverseError, invWorldError);
+                maxSameLocalError = Mathf.Max(maxSameLocalError, sameLocalError);
+                maxSameWorldError = Mathf.Max(maxSameWorldError, sameWorldError);
+                matrixDetails[i] = "  #" + i + " '" + doc.Bones[i].Name +
+                    "' parent=" + doc.Bones[i].Parent +
+                    " nodeID=" + doc.Bones[i].NodeID +
+                    " rawBonenum=" + Be32(original, at + 8) +
+                    " inverseLocal=" + invLocalError.ToString("G9") +
+                    " inverseWorld=" + invWorldError.ToString("G9") +
+                    " sameLocal=" + sameLocalError.ToString("G9") +
+                    " sameWorld=" + sameWorldError.ToString("G9");
             }
+            SecondaryMatrixKind kind = SecondaryMatrixKind.Unknown;
+            if (maxWorldInverseError <= SecondaryMatrixTolerance)
+                kind = SecondaryMatrixKind.InverseWorld;
+            else if (maxInverseError <= SecondaryMatrixTolerance)
+                kind = SecondaryMatrixKind.InverseLocal;
             if (doc.Groups.Count < 1 || doc.Groups.Count > 32)
                 throw new InvalidDataException("Original EMD polygon count unsupported.");
             var inputs = new List<InputMesh>();
@@ -384,7 +413,13 @@ namespace MusafirEx.EMD2Unity
                 boneStart = boneStart, oldBoneEnd = oldBoneEnd, materialStart = materialStart,
                 polygonStart = polygonStart, uvStart = uvStart,
                 modelScale = scale, swapYAndZ = swap,
-                maxInverseDeviation = maxInverseError
+                maxInverseDeviation = maxInverseError,
+                maxWorldInverseDeviation = maxWorldInverseError,
+                maxSameLocalDeviation = maxSameLocalError,
+                maxSameWorldDeviation = maxSameWorldError,
+                secondaryMatrixKind = kind,
+                originalWorldMatrices = worldMatrices,
+                matrixDetailRows = matrixDetails
             };
         }
 
