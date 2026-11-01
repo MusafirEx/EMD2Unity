@@ -1,5 +1,12 @@
 # Changelog
 
+## Experimental — Unity GameObject / BRRES weapon replacement, Phase B alpha
+
+- Added **Tools → EMD2Unity → Full GameObject Weapon Replacement (Alpha)**. Read-only preflight inspects selected Scene/Prefab GameObject (e.g. axe002), all SkinnedMeshRenderers, common source rootBone, bone hierarchy, 4 source polygon candidates, UV topology limits and per-slot texture references.
+- Added guarded *original-attachment-preserving* skeleton template writer: inserts original 0x1A0-stride new bone records below source rootBone, adjusts known EMD header section offsets, validates EMD parser bone/group/material counts, never overwrites originals, and emits `*.replacement.json` mapping material/texture names. It compares original 4x4 secondary bone matrices with inverse locals; unsupported variants refuse by default unless explicitly opted into unsafe testing.
+- Integrates with the existing Direct FBX exporter, which also supports any Unity GameObject. Source polygon names need not match: map each source mesh to an existing EMD polygon slot. The source WP bone names are appended to the EMD and direct skin weights can map by name; the matching generated manifest permits intentional full-rig bone replacement without weakening ordinary FBX safeguards.
+- **NOT full game-compatible yet:** original weapon polygon/material table count is preserved; source textures are manifest-only unless experimental existing submaterial name replacement is enabled; no game DDS/EMAT resource writer, no new EMDI, unknown 12-byte auxiliary vertex packing, and new second bone-matrix semantics remain unverified. No live Unity compilation or in-game test. Keep on a draft child branch of PR #3 until validated and synced with main.
+
 ## Unreleased — FBX3 in-game stretched-mesh regression safeguards
 
 - Real-file comparison found an important skeleton regression despite valid parser: original `handleblade` uses **648 Weapon_j001 + 447 Weapon_j002**, original `emblem_00` uses **Weapon_j002**, but FBX3 bound all 1,886 vertices to **Weapon_j001**.
