@@ -147,6 +147,24 @@ Verified source sample: `DRV00_W00.emd` from the user (86,432 bytes), with 4 sin
 
 Strict limitations: only single-group polygon type `0x0004`, source filename matching `_Wxx.emd`, identical triangle array and skin weights, identical mesh child names and identity transforms, and unchanged materials/UVs. New topology, arbitrary FBX vertex ordering, new bones, changed weights, animation and EMDI generation are **not** supported. Since this patch does not change material entries or their ordering, retain the **original matching EMDI** for the initial weapon replacement test. Unity compilation and actual PS3 compatibility are pending independent validation.
 
+## Full Unity GameObject → weapon EMD replacement (alpha; unverified in game)
+
+This experimental *staged* option extends the existing DRV00 weapon export workflow to a non-FBX Unity GameObject, such as the BRRES-imported `Assets/09/axe002.brres` prefab. **It is not yet a standalone universal EMD writer or a complete texture package exporter.** Work only on copies.
+
+1. Select the **axe002** GameObject/prefab in Unity. Open **Tools → EMD2Unity → Full GameObject Weapon Replacement (Alpha)**.
+2. Assign the unchanged original imported **DRV00_W00.emd** as the source binary/attachment template and **axe002** as the replacement. Click **Analyze selected GameObject (read-only)**. It lists source bones, mesh slots, candidate texture names and the original bone inverse-matrix consistency check.
+3. Choose the original attachment bone for the new `ROOT` (default first original bone); confirm the rig hierarchy. The current `axe002` has `ROOT/WP-00` with `WP-01` through `WP-04`, and four `polygon0`–`polygon3` SkinnedMeshRenderers. The editor requires **one common rootBone**, unique source bone names, readable single-submesh triangle meshes and **the same polygon-slot count as the original EMD**.
+4. Click **Create skeleton template + open Direct Export**. Save a **new** `*_W00.emd` under `Assets`. The tool appends the source rig beneath the chosen unchanged original attachment bone, updates the known EMD header offsets, and imports the candidate. It writes a `*.replacement.json` mapping source mesh/material/texture names to original EMD slots. Existing files are never overwritten.
+5. The existing **Direct FBX to Weapon EMD** editor opens with the new EMD and axe002 assigned. Although named FBX, it accepts any Scene/Prefab GameObject hierarchy. Verify the per-slot mapping (the four polygons are paired by order), leave **Encode FBX normals and skin weights DIRECTLY** and **Preserve game-packed auxiliary stream** enabled, and export another **new** `.emd`. The replacement-rig mode permits intentional use of new WP bones only when the matching generated template and manifest are present; it does not disable bone-name/weight validation.
+6. Reimport the resulting model and test in an isolated RPCS3/game environment, keeping original EMD/EMDI/EMAT/DDS backups.
+
+**Important limitations and guardrails:**
+- The new skeleton is *appended* to the original three weapon bones rather than deleting original attachment references. The editor currently writes a hypothesis that the second 4×4 matrix in each new bone record is the inverse of the first. It **refuses export by default** when the source EMD's existing bones do not corroborate that hypothesis; an explicit unsafe opt-in exists only for isolated experiments. Parser acceptance does not establish PS3 rendering/animation correctness.
+- It preserves the original EMD polygon **names/number** and material **slot count/order**, because game EMDI and effects may refer to those slots. It accepts different *source* mesh names/count of vertices and triangles, **not** an arbitrary number of original EMD polygon slots. The source rig itself is appended with its original WP bone names.
+- Different Unity materials/textures are recorded in JSON, **not encoded into game DDS/EMAT**. Experimental name replacement only updates the first submaterial texture reference in each existing material and refuses conflicting source textures that would share a target slot. Real game texture registration/packaging and new material slots are **not implemented**; do not claim a full textured replacement.
+- The game-packed **12-byte auxiliary vertex stream remains unverified**. The exporter defaults to transferring it from nearest original vertices rather than writing speculative float32 normals. New bone/attachment movement may still stretch, and the original game may not animate the added WP bones automatically.
+- The feature branch is stacked on the existing draft export branch **PR #3** and does **not** yet include the newest main-only coordinate/PEMT changes. Do not install it over your working main package without a separate project copy and review.
+
 ## How to use
 
 1. Extract `.EMD` model files from your own game files. This package does not extract NCAT archives or package game assets.
