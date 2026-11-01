@@ -83,6 +83,8 @@ namespace MusafirEx.EMD2Unity
             internal SecondaryMatrixKind secondaryMatrixKind;
             internal Matrix4x4[] originalWorldMatrices;
             internal string[] matrixDetailRows;
+            internal int headerBoneNumberBase;
+            internal bool verifiedChildCountField;
         }
 
         [MenuItem("Tools/EMD2Unity/Full GameObject Weapon Replacement (Alpha)")]
@@ -292,9 +294,17 @@ namespace MusafirEx.EMD2Unity
             float maxSameLocalError = 0f;
             float maxSameWorldError = 0f;
             string[] matrixDetails = new string[oldBones];
+            bool zeroBasedHeaders = true, oneBasedHeaders = true;
+            bool childCountsMatch = true;
             for (int i = 0; i < oldBones; ++i)
             {
                 int at = boneStart + i * BoneRecordSize;
+                int rawBoneNumber = Be32(original, at + 8);
+                zeroBasedHeaders &= rawBoneNumber == i;
+                oneBasedHeaders &= rawBoneNumber == i + 1;
+                int childCount = doc.Bones.Count(b => b.Parent == i);
+                int rawChildCount = Be32(original, at + 0x114);
+                childCountsMatch &= rawChildCount == childCount;
                 Matrix4x4 local = doc.Bones[i].LocalMatrix;
                 Matrix4x4 world = worldMatrices[i];
                 Matrix4x4 second = ReadAffineMatrix(original, at + 0x160);
@@ -313,7 +323,8 @@ namespace MusafirEx.EMD2Unity
                 matrixDetails[i] = "  #" + i + " '" + doc.Bones[i].Name +
                     "' parent=" + doc.Bones[i].Parent +
                     " nodeID=" + doc.Bones[i].NodeID +
-                    " rawBonenum=" + Be32(original, at + 8) +
+                    " rawBonenum=" + rawBoneNumber +
+                    " children=" + rawChildCount + "/" + childCount +
                     " inverseLocal=" + invLocalError.ToString("G9") +
                     " inverseWorld=" + invWorldError.ToString("G9") +
                     " sameLocal=" + sameLocalError.ToString("G9") +
@@ -419,7 +430,9 @@ namespace MusafirEx.EMD2Unity
                 maxSameWorldDeviation = maxSameWorldError,
                 secondaryMatrixKind = kind,
                 originalWorldMatrices = worldMatrices,
-                matrixDetailRows = matrixDetails
+                matrixDetailRows = matrixDetails,
+                headerBoneNumberBase = zeroBasedHeaders ? 0 : oneBasedHeaders ? 1 : -1,
+                verifiedChildCountField = childCountsMatch
             };
         }
 
@@ -512,6 +525,21 @@ namespace MusafirEx.EMD2Unity
                     "The selected original attachment bone has a degenerate matrix. " +
                     "Cannot transform replacement ROOT into its parent space.");
             var appendedWorld = new Matrix4x4[a.bones.Length];
+            // Rebuild fields ONLY when every original bone proves their
+            // interpretation; otherwise leave the unchanged donor values.
+            if ((a.headerBoneNumberBase < 0 || !a.verifiedChildCountField) &&
+                !allowUnverifiedBindMatrix)
+                throw new InvalidDataException(
+                    "The original EMD does not verify the presumed per-bone index " +
+                    "and child-count fields. Refusing to duplicate unknown metadata. " +
+                    "Click Analyze selected GameObject to review rawBonenum and " +
+                    "children evidence before any experimental override.");
+            if (a.verifiedChildCountField)
+            {
+                int originalParentField = a.boneStart + attachmentBoneIndex * BoneRecordSize + 0x114;
+                int oldChildren = Be32(a.original, originalParentField);
+                Put32(result, originalParentField, checked(oldChildren + 1));
+            }
             for (int i = 0; i < a.bones.Length; i++)
             {
                 Transform t = a.bones[i];
@@ -520,6 +548,11 @@ namespace MusafirEx.EMD2Unity
                 int donor = a.boneStart + (oldCount - 1) * BoneRecordSize;
                 Buffer.BlockCopy(a.original, donor, result, dest, BoneRecordSize);
                 PutName(result, dest + 0x10, 32, t.name);
+                if (a.headerBoneNumberBase >= 0)
+                    Put32(result, dest + 0x08, oldCount + i + a.headerBoneNumberBase);
+                if (a.verifiedChildCountField)
+                    Put32(result, dest + 0x114,
+                        a.bones.Count(b => b.parent == t));
                 int parent = t == a.rigRoot ? attachmentBoneIndex : boneIndices[t.parent];
                 Put32(result, dest + 0x110, parent);
                 Put32(result, dest + 0x118, nextNode + i - 1);
@@ -734,6 +767,12 @@ namespace MusafirEx.EMD2Unity
                             a.maxSameLocalDeviation.ToString("G9"));
                         builder.AppendLine("  same world: " +
                             a.maxSameWorldDeviation.ToString("G9"));
+                        builder.AppendLine("Per-bone header index convention: " +
+                            (a.headerBoneNumberBase < 0 ? "UNVERIFIED" :
+                            (a.headerBoneNumberBase == 0 ? "zero-based" : "one-based")));
+                        builder.AppendLine("Per-bone child count consistency: " +
+                            (a.verifiedChildCountField ? "MATCHES hierarchy" :
+                                "UNVERIFIED (unsafe export refused)"));
                         builder.AppendLine("Per-original-bone evidence (no file writes):");
                         foreach (string line in a.matrixDetailRows)
                             builder.AppendLine(line);
