@@ -19,6 +19,8 @@ namespace MusafirEx.EMD2Unity
     {
         private const int BoneRecordSize = 0x1A0;
         private const int MaxFileBytes = 64 * 1024 * 1024;
+        private const float SecondaryMatrixTolerance = 0.005f;
+        private enum SecondaryMatrixKind { Unknown, InverseLocal, InverseWorld }
         [SerializeField] private GameObject originalEmd;
         [SerializeField] private GameObject sourceGameObject;
         [SerializeField] private int attachmentBoneIndex;
@@ -75,6 +77,12 @@ namespace MusafirEx.EMD2Unity
             internal float modelScale;
             internal bool swapYAndZ;
             internal float maxInverseDeviation;
+            internal float maxWorldInverseDeviation;
+            internal float maxSameLocalDeviation;
+            internal float maxSameWorldDeviation;
+            internal SecondaryMatrixKind secondaryMatrixKind;
+            internal Matrix4x4[] originalWorldMatrices;
+            internal string[] matrixDetailRows;
         }
 
         [MenuItem("Tools/EMD2Unity/Full GameObject Weapon Replacement (Alpha)")]
@@ -143,6 +151,50 @@ namespace MusafirEx.EMD2Unity
                     matrix[row, col] = BitConverter.ToSingle(BitConverter.GetBytes(bits), 0);
                 }
             return matrix;
+        }
+
+        // Like EmdParser.Parse, only the XYZ components of each row are
+        // interpreted as spatial transform data. The 4th components in
+        // the source's 16-float block are not assumed to be affine markers.
+        private static Matrix4x4 ReadAffineMatrix(byte[] bytes, int offset)
+        {
+            Matrix4x4 raw = ReadMatrix(bytes, offset);
+            Matrix4x4 affine = Matrix4x4.identity;
+            for (int col = 0; col < 4; ++col)
+                for (int row = 0; row < 3; ++row)
+                    affine[row, col] = raw[row, col];
+            return affine;
+        }
+
+        private static Matrix4x4[] GetOriginalWorldMatrices(EmdDocument doc)
+        {
+            var result = new Matrix4x4[doc.Bones.Count];
+            var state = new int[doc.Bones.Count];
+            for (int i = 0; i < doc.Bones.Count; i++)
+                ResolveWorldMatrix(i, doc, result, state);
+            return result;
+        }
+
+        private static Matrix4x4 ResolveWorldMatrix(int index, EmdDocument doc,
+            Matrix4x4[] world, int[] state)
+        {
+            if (state[index] == 2) return world[index];
+            if (state[index] == 1)
+                throw new InvalidDataException("Cyclic original EMD bone hierarchy at #" + index);
+            state[index] = 1;
+            int parent = doc.Bones[index].Parent;
+            Matrix4x4 local = doc.Bones[index].LocalMatrix;
+            if (parent == -1)
+                world[index] = local;
+            else
+            {
+                if (parent < 0 || parent >= doc.Bones.Count || parent == index)
+                    throw new InvalidDataException("Invalid original EMD bone parent #" +
+                        index + " => " + parent);
+                world[index] = ResolveWorldMatrix(parent, doc, world, state) * local;
+            }
+            state[index] = 2;
+            return world[index];
         }
 
         private static float MatrixMaxError(Matrix4x4 left, Matrix4x4 right)
