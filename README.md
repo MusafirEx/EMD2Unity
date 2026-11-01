@@ -41,6 +41,12 @@ For STG models, **Use STG Import Defaults** forces both Z-to-Y conversion and X 
 
 This is an experimental coordinate-system correction, not a verified match to the original PS3 game. Compare a known asymmetric object with the **same camera position and forward direction**, and test skin/PEMT animations separately after changing coordinate basis. Live Unity compilation and visual validation were unavailable when this change was authored.
 
+### PEMT and EMD orientation consistency (experimental)
+
+When you enable **Rotate -90 X** or **Mirror Left/Right (X Axis)** on an EMD model, PEMT preview and new `.anim` exports must use exactly the same coordinate basis as the imported mesh and bones. The PEMT animation exporter now delegates **position deltas**, **quaternion rotation deltas**, and preview-only **experimental scale multipliers** to the EMD importer's effective coordinate conversion (including stage presets). The previous exporter checked only the serialized `swapYAndZ` boolean and could generate incorrectly oriented animations for the newer options. Legacy and default imports retain their original conversion.
+
+**Important:** Existing exported `.anim` assets are not rewritten. Back up and manually remove/recreate affected exported clips if you change EMD coordinate settings; **Export All** intentionally skips existing filenames. Use the PEMT **Animation Preview** to compare the corrected pose before regenerating clips. An unrelated PEMT parsing failure, unsupported track marker or missing-bone error is **not** automatically solved by this coordinate change; consult the full Console message / Copy Motion Track Report. New conversion requires Unity compilation and actual CHR/PEMT visual validation.
+
 ### Automatic STG model import defaults (v0.5.9)
 
 EMD2Unity automatically recognizes stage models located under a case-insensitive `stg` folder or in a folder named `STG` followed by digits, such as `Assets/KRBWS/stg/STG31/model/AREA02.emd`. New and existing stage EMD assets use the following **effective** defaults once imported with v0.5.9:
