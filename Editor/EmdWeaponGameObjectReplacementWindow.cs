@@ -23,6 +23,7 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private GameObject sourceGameObject;
         [SerializeField] private int attachmentBoneIndex;
         [SerializeField] private bool patchTextureReferenceNames;
+        [SerializeField] private bool allowUnverifiedBindMatrix;
         [SerializeField] private string report = "Select original DRV00_W00.emd and the axe002 Scene GameObject.";
         private Vector2 scroll;
 
@@ -71,6 +72,7 @@ namespace MusafirEx.EMD2Unity
             internal int uvStart;
             internal float modelScale;
             internal bool swapYAndZ;
+            internal float maxInverseDeviation;
         }
 
         [MenuItem("Tools/EMD2Unity/Full GameObject Weapon Replacement (Alpha)")]
@@ -122,6 +124,31 @@ namespace MusafirEx.EMD2Unity
                 throw new InvalidDataException("EMD name exceeds " + (capacity - 1) + " bytes: " + value);
             Array.Clear(data, offset, capacity);
             Buffer.BlockCopy(bytes, 0, data, offset, bytes.Length);
+        }
+
+        private static Matrix4x4 ReadMatrix(byte[] bytes, int offset)
+        {
+            Matrix4x4 matrix = Matrix4x4.zero;
+            for (int col = 0; col < 4; col++)
+                for (int row = 0; row < 4; row++)
+                {
+                    int bits = Be32(bytes, offset + (col * 4 + row) * 4);
+                    matrix[row, col] = BitConverter.ToSingle(BitConverter.GetBytes(bits), 0);
+                }
+            return matrix;
+        }
+
+        private static float MatrixMaxError(Matrix4x4 left, Matrix4x4 right)
+        {
+            float error = 0f;
+            for (int i = 0; i < 16; i++)
+            {
+                if (float.IsNaN(left[i]) || float.IsNaN(right[i]) ||
+                    float.IsInfinity(left[i]) || float.IsInfinity(right[i]))
+                    return float.PositiveInfinity;
+                error = Mathf.Max(error, Mathf.Abs(left[i] - right[i]));
+            }
+            return error;
         }
 
         private static void PutMatrix(byte[] bytes, int offset, Matrix4x4 matrix)
@@ -195,6 +222,20 @@ namespace MusafirEx.EMD2Unity
                 throw new InvalidDataException("This EMD does not match the verified contiguous bone/material/polygon/UV template layout. Refusing speculative bone writes.");
             // The source parser advances by exactly 0x1A0 per bone; the
             // embedded recordSize field is not a reliable stride indicator.
+            float maxInverseError = 0f;
+            for (int i = 0; i < oldBones; i++)
+            {
+                int start = boneStart + i * BoneRecordSize;
+                Matrix4x4 forward = ReadMatrix(original, start + 0x120);
+                Matrix4x4 reverse = ReadMatrix(original, start + 0x160);
+                if (Mathf.Abs(forward.determinant) < 1e-8f)
+                {
+                    maxInverseError = float.PositiveInfinity;
+                    break;
+                }
+                maxInverseError = Mathf.Max(maxInverseError,
+                    MatrixMaxError(reverse, forward.inverse));
+            }
             if (doc.Groups.Count < 1 || doc.Groups.Count > 32)
                 throw new InvalidDataException("Original EMD polygon count unsupported.");
             var inputs = new List<InputMesh>();
@@ -277,7 +318,8 @@ namespace MusafirEx.EMD2Unity
                 rigRoot = rigRoot, bones = bones, meshes = inputs, materials = materials,
                 boneStart = boneStart, oldBoneEnd = oldBoneEnd, materialStart = materialStart,
                 polygonStart = polygonStart, uvStart = uvStart,
-                modelScale = scale, swapYAndZ = swap
+                modelScale = scale, swapYAndZ = swap,
+                maxInverseDeviation = maxInverseError
             };
         }
 
@@ -341,6 +383,10 @@ namespace MusafirEx.EMD2Unity
 
         private byte[] BuildTemplate(Analysis a)
         {
+            if (a.maxInverseDeviation > 0.05f && !allowUnverifiedBindMatrix)
+                throw new InvalidDataException("Original EMD second bone matrix differs from inverse local " +
+                    "(maximum difference " + a.maxInverseDeviation.ToString("G6") +
+                    "). Its meaning is unverified. Use read-only diagnostics or explicitly opt in to unsafe testing.");
             int added = a.bones.Length;
             int delta = checked(added * BoneRecordSize);
             if (a.original.Length > MaxFileBytes - delta)
@@ -486,6 +532,8 @@ namespace MusafirEx.EMD2Unity
                     attachmentBoneIndex, 0, labels.Length - 1), labels);
             patchTextureReferenceNames = EditorGUILayout.ToggleLeft(
                 "Experimental: rename existing EMD texture references (needs game DDS/EMAT)", patchTextureReferenceNames);
+            allowUnverifiedBindMatrix = EditorGUILayout.ToggleLeft(
+                "Unsafe: permit unknown second-bone-matrix layout (only for isolated test)", allowUnverifiedBindMatrix);
             using (new EditorGUILayout.HorizontalScope())
             {
                 if (GUILayout.Button("Analyze selected GameObject (read-only)"))
@@ -499,6 +547,9 @@ namespace MusafirEx.EMD2Unity
                         builder.AppendLine("Source: " + sourceGameObject.name);
                         builder.AppendLine("Original bones: " + a.document.Bones.Count +
                             "; appended source bones: " + a.bones.Length);
+                        builder.AppendLine("Original bone reverse-matrix vs inverse-local max error: " +
+                            a.maxInverseDeviation.ToString("G6") +
+                            " (<= 0.05 considered candidate; not proof of game compatibility)");
                         foreach (Transform t in a.bones)
                             builder.AppendLine("  +" + t.name + " <- " +
                                 (t == a.rigRoot ? "original attachment bone #" + attachmentBoneIndex : t.parent.name));
