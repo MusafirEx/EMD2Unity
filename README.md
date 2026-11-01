@@ -24,6 +24,23 @@ python Tools/build_unitypackage.py --output EMD2Unity-v0.4.9.unitypackage
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
 
+### Experimental coordinate orientation controls (opt-in)
+
+If turning off **Convert PS3 Z-Up to Unity Y-Up** appears to swap a character's or stage's left and right, the importer now provides *separate* coordinate controls in the EMD **Model** tab. Existing assets keep their original behaviour unless you opt in:
+
+| Option | Vertex-space transform | Reflection parity |
+| --- | --- | --- |
+| Z-to-Y Off, Mirror X Off | `(x, y, z)` | No |
+| Z-to-Y On, **Legacy Swap Y/Z** | `(x, z, y)` | Yes |
+| Z-to-Y On, **Rotate -90 X** | `(x, z, -y)` | No |
+| Z-to-Y Off, **Mirror Left/Right (X Axis)** On | `(-x, y, z)` | Yes |
+
+**Rotate -90 X** is a proper basis rotation; the old swap was a reflection. **Mirror Left/Right** can be used independently, including alongside either Z-to-Y mode. The importer applies the same orthogonal coordinate basis to mesh positions and skeleton matrices, and reverses triangle winding only when the composite basis has negative parity. UV data, materials and original game files are untouched.
+
+For STG models, **Use STG Import Defaults** forces both Z-to-Y conversion and X mirroring **off**, preserving the previously tested stage preset. Uncheck **Use STG Import Defaults** on a test asset to access the new controls; then explicitly reproduce the working stage UV settings if needed (16-byte alignment, RGBA colors). Do not use **Reverse Triangle Winding** to solve actual left/right mirroring; it only adjusts face orientation.
+
+This is an experimental coordinate-system correction, not a verified match to the original PS3 game. Compare a known asymmetric object with the **same camera position and forward direction**, and test skin/PEMT animations separately after changing coordinate basis. Live Unity compilation and visual validation were unavailable when this change was authored.
+
 ### Automatic STG model import defaults (v0.5.9)
 
 EMD2Unity automatically recognizes stage models located under a case-insensitive `stg` folder or in a folder named `STG` followed by digits, such as `Assets/KRBWS/stg/STG31/model/AREA02.emd`. New and existing stage EMD assets use the following **effective** defaults once imported with v0.5.9:
