@@ -24,7 +24,7 @@ namespace MusafirEx.EMD2Unity
         [Range(0, 6)] public int sourceChannel;
     }
 
-    [ScriptedImporter(17, "emd")]
+    [ScriptedImporter(18, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         // LegacySwapYZ preserves earlier imports. RotateMinus90X is a true
@@ -87,7 +87,9 @@ namespace MusafirEx.EMD2Unity
             !customizeStageImport && IsStageEmdPath(assetPath);
 
         private bool EffectiveSwapYAndZ => !IsUsingStageDefaults && swapYAndZ;
-        private bool EffectiveMirrorX => !IsUsingStageDefaults && mirrorX;
+        // STG assets default to mirrored X with the preset enabled.
+        // Manual model settings are preserved, and CHR/CSD still default off.
+        private bool EffectiveMirrorX => IsUsingStageDefaults || mirrorX;
         // An axis exchange or a single reflection changes triangle parity.
         // A true 90-degree rotation does not. XOR makes independent mirrors compose.
         private bool EffectiveNegativeParity =>
