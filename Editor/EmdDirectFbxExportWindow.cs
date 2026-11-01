@@ -203,10 +203,10 @@ namespace MusafirEx.EMD2Unity
 
         private void OnGUI()
         {
-            EditorGUILayout.LabelField("Direct Blender / FBX → EMD Export", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Direct GameObject / FBX → EMD Export", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
-                "ONE-STEP EXPORT: FBX geometry + UV0 → NEW weapon .emd. " +
-                "The ORIGINAL _Wxx.emd is required as the PS3 skeleton, material, " +
+                "ONE-STEP GEOMETRY EXPORT: Unity GameObject/FBX mesh + UV0 → NEW weapon .emd. " +
+                "An original or alpha extended-rig _Wxx.emd template supplies bone, material, " +
                 "opaque vertex-data and binary-layout template. " +
                 "No intermediate mesh assets, scene copies, distance analysis or " +
                 "vertex-distance acceptance tests are required. " +
@@ -216,7 +216,7 @@ namespace MusafirEx.EMD2Unity
             var selectedEmd = (GameObject)EditorGUILayout.ObjectField(
                 "Original Weapon .emd (template)", originalEmd, typeof(GameObject), false);
             var selectedFbx = (GameObject)EditorGUILayout.ObjectField(
-                "FBX or Blender Model", fbxSource, typeof(GameObject), true);
+                "Unity GameObject / FBX", fbxSource, typeof(GameObject), true);
             if (selectedEmd != originalEmd || selectedFbx != fbxSource)
             {
                 originalEmd = selectedEmd;
@@ -256,6 +256,17 @@ namespace MusafirEx.EMD2Unity
                 allowBoneCollapse = EditorGUILayout.ToggleLeft(
                     "Allow missing original bone influences (unsafe, may stretch mesh)",
                     allowBoneCollapse);
+                useExtendedReplacementRig = EditorGUILayout.ToggleLeft(
+                    "Use generated extended-rig GameObject replacement manifest",
+                    useExtendedReplacementRig);
+                if (useExtendedReplacementRig)
+                    EditorGUILayout.HelpBox(
+                        "Requires the exact generated *_W00.emd template and its " +
+                        "*.replacement.json for the selected GameObject. " +
+                        "Old mesh bone influences may be replaced intentionally; " +
+                        "actual source WP bones must still match the extended EMD " +
+                        "skeleton. Game loading and animation remain unverified.",
+                        MessageType.Warning);
             }
             EditorGUILayout.HelpBox(
                 "A single FBX mesh with multiple material submeshes is treated as " +
