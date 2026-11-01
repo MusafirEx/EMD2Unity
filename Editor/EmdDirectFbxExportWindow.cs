@@ -25,6 +25,9 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private bool forceRigidBone = false;
         [SerializeField] private bool allowBoneCollapse = false;
         [SerializeField] private bool useExtendedReplacementRig = false;
+        [SerializeField] private bool useGroupedSourceMapping = false;
+        [SerializeField] private bool allowMergedDifferentTextures = false;
+        [SerializeField] private int[] sourceToPolygon = new int[128];
 
         [Serializable]
         private sealed class ReplacementMarker
@@ -32,6 +35,8 @@ namespace MusafirEx.EMD2Unity
             public string sourceUnityGameObject;
             public string generatedTemplatePath;
             public string[] sourceBoneNames;
+            public string[] sourceMeshPaths;
+            public int sourceMeshCount;
         }
 
         private bool HasMatchingReplacementRig(EmdDocument document)
@@ -52,7 +57,17 @@ namespace MusafirEx.EMD2Unity
                     return false;
                 var names = new HashSet<string>(document.Bones.ConvertAll(b => b.Name),
                     StringComparer.Ordinal);
-                return Array.TrueForAll(marker.sourceBoneNames, name => names.Contains(name));
+                if (!Array.TrueForAll(marker.sourceBoneNames, name => names.Contains(name)))
+                    return false;
+                List<InputSlot> current = GetInputSlots(fbxSource);
+                if (marker.sourceMeshPaths == null ||
+                    marker.sourceMeshCount != current.Count ||
+                    marker.sourceMeshPaths.Length != current.Count)
+                    return false;
+                for (int i = 0; i < current.Count; ++i)
+                    if (marker.sourceMeshPaths[i] != current[i].path)
+                        return false;
+                return true;
             }
             catch (Exception) { return false; }
         }
@@ -70,10 +85,12 @@ namespace MusafirEx.EMD2Unity
         private sealed class InputSlot
         {
             internal string label;
+            internal string path;
             internal Transform transform;
             internal Mesh mesh;
             internal int subMesh;
             internal SkinnedMeshRenderer skinned;
+            internal Renderer renderer;
         }
 
         [MenuItem("Tools/EMD2Unity/Direct FBX to Weapon EMD (Experimental)")]
@@ -98,10 +115,34 @@ namespace MusafirEx.EMD2Unity
             window.bakeRootTransform = false;
             try
             {
-                window.MapInOrder(GetOriginalSlots(generatedTemplate), GetInputSlots(source));
-                window.report = "GameObject replacement mapping prepared. Confirm all mesh slots and " +
-                    "bone names before exporting. Source textures are NOT embedded in the EMD. " +
-                    "This path is experimental and requires in-game verification.";
+                var originals = GetOriginalSlots(generatedTemplate);
+                var inputs = GetInputSlots(source);
+                if (inputs.Count > originals.Count)
+                {
+                    window.useGroupedSourceMapping = true;
+                    window.MapSourcesInOrder(originals, inputs);
+                }
+                else
+                {
+                    window.useGroupedSourceMapping = false;
+                    window.MapInOrder(originals, inputs);
+                }
+                EmdDocument rig = EmdParser.Parse(
+                    File.ReadAllBytes(AssetDatabase.GetAssetPath(generatedTemplate)));
+                var skinned = source.GetComponentInChildren<SkinnedMeshRenderer>(true);
+                if (skinned != null && skinned.rootBone != null)
+                {
+                    int target = rig.Bones.FindIndex(b => b.Name == skinned.rootBone.name);
+                    if (target >= 0) window.rigidUnskinnedBoneIndex = target;
+                }
+                window.report = "GameObject replacement mapping prepared: " + inputs.Count +
+                    " source meshes, " + originals.Count + " target polygon slots. " +
+                    (window.useGroupedSourceMapping
+                        ? "Assign ALL source meshes to a destination slot; unmapped " +
+                          "parts stop export. Merging different textures is refused " +
+                          "without an explicit unsafe test override. "
+                        : "Verify the mappings. ") +
+                    "Source DDS/EMAT textures are NOT embedded by this exporter.";
             }
             catch (Exception e)
             {
@@ -182,10 +223,13 @@ namespace MusafirEx.EMD2Unity
                     {
                         label = HierarchyPath(input.transform, child) +
                             " [material slot " + submesh + "; mesh verts " + mesh.vertexCount + "]",
+                        path = HierarchyPath(input.transform, child),
                         transform = child,
                         mesh = mesh,
                         subMesh = submesh,
-                        skinned = skinned
+                        skinned = skinned,
+                        renderer = skinned != null ? (Renderer)skinned :
+                            child.GetComponent<MeshRenderer>()
                     });
                 }
             }
