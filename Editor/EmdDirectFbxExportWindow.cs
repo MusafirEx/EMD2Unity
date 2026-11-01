@@ -24,6 +24,38 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private int rigidUnskinnedBoneIndex = 0;
         [SerializeField] private bool forceRigidBone = false;
         [SerializeField] private bool allowBoneCollapse = false;
+        [SerializeField] private bool useExtendedReplacementRig = false;
+
+        [Serializable]
+        private sealed class ReplacementMarker
+        {
+            public string sourceUnityGameObject;
+            public string generatedTemplatePath;
+            public string[] sourceBoneNames;
+        }
+
+        private bool HasMatchingReplacementRig(EmdDocument document)
+        {
+            if (!useExtendedReplacementRig || document == null ||
+                originalEmd == null || fbxSource == null)
+                return false;
+            string templatePath = AssetDatabase.GetAssetPath(originalEmd);
+            string markerPath = Path.ChangeExtension(templatePath, ".replacement.json");
+            if (!File.Exists(markerPath)) return false;
+            try
+            {
+                ReplacementMarker marker =
+                    JsonUtility.FromJson<ReplacementMarker>(File.ReadAllText(markerPath));
+                if (marker == null || marker.generatedTemplatePath != templatePath ||
+                    marker.sourceUnityGameObject != fbxSource.name ||
+                    marker.sourceBoneNames == null || marker.sourceBoneNames.Length == 0)
+                    return false;
+                var names = new HashSet<string>(document.Bones.ConvertAll(b => b.Name),
+                    StringComparer.Ordinal);
+                return Array.TrueForAll(marker.sourceBoneNames, name => names.Contains(name));
+            }
+            catch (Exception) { return false; }
+        }
         [SerializeField] private bool keepOriginalPackedAuxiliary = true;
         [SerializeField] private int[] mapping = new int[32];
         private Vector2 scrollPosition;
@@ -60,6 +92,7 @@ namespace MusafirEx.EMD2Unity
             window.keepOriginalPackedAuxiliary = true;
             window.forceRigidBone = false;
             window.allowBoneCollapse = false;
+            window.useExtendedReplacementRig = true;
             window.exportFbxUv0 = true;
             window.exportFbxColors = false;
             window.bakeRootTransform = false;
@@ -596,6 +629,11 @@ namespace MusafirEx.EMD2Unity
                 EmdDocument emd = exportNativeFbxAttributes ?
                     EmdParser.Parse(File.ReadAllBytes(
                         AssetDatabase.GetAssetPath(originalEmd))) : null;
+                bool fullReplacement = HasMatchingReplacementRig(emd);
+                if (useExtendedReplacementRig && !fullReplacement)
+                    throw new InvalidDataException(
+                        "Extended-rig export requires the exact EMD template and companion " +
+                        ".replacement.json generated from this GameObject.");
                 var usedInputs = new HashSet<int>();
                 var replacement = new HashSet<string>();
                 var summary = new StringBuilder();
@@ -642,13 +680,15 @@ namespace MusafirEx.EMD2Unity
                                 BoneNames(emd, originalBones) + "] but new FBX uses [" +
                                 BoneNames(emd, exportedBones) + "]. Missing bone influences [" +
                                 BoneNames(emd, missing) + "].";
-                            if (!allowBoneCollapse)
+                            if (!fullReplacement && !allowBoneCollapse)
                                 throw new InvalidDataException(warning +
                                     " This can stretch or detach geometry in game. " +
                                     "Skin the FBX mesh to the matching source EMD bones in Blender, " +
                                     "or explicitly enable Allow missing original bone influences " +
                                     "(unsafe).");
-                            summary.AppendLine("UNSAFE BONE COLLAPSE: " + warning);
+                            summary.AppendLine((fullReplacement
+                                ? "EXTENDED RIG (original mesh influence replacement expected): "
+                                : "UNSAFE BONE COLLAPSE: ") + warning);
                         }
                     }
                     newMeshes.Add(created);
