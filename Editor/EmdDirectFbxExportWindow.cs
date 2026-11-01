@@ -300,6 +300,22 @@ namespace MusafirEx.EMD2Unity
                 allowBoneCollapse = EditorGUILayout.ToggleLeft(
                     "Allow missing original bone influences (unsafe, may stretch mesh)",
                     allowBoneCollapse);
+                useGroupedSourceMapping = EditorGUILayout.ToggleLeft(
+                    "Map multiple source meshes into original EMD polygon slots",
+                    useGroupedSourceMapping);
+                if (useGroupedSourceMapping)
+                {
+                    allowMergedDifferentTextures = EditorGUILayout.ToggleLeft(
+                        "UNSAFE: allow different source textures to share ONE EMD slot",
+                        allowMergedDifferentTextures);
+                    EditorGUILayout.HelpBox(
+                        "Each source must be assigned to exactly one original polygon. " +
+                        "Multiple sources in one slot have their geometry merged, " +
+                        "but EMD supports only ONE material slot/texture mapping there. " +
+                        "Use a compatible texture atlas to preserve different textures; " +
+                        "the unsafe override is for geometry-only game testing.",
+                        MessageType.Warning);
+                }
                 useExtendedReplacementRig = EditorGUILayout.ToggleLeft(
                     "Use generated extended-rig GameObject replacement manifest",
                     useExtendedReplacementRig);
@@ -344,21 +360,52 @@ namespace MusafirEx.EMD2Unity
                     if (inputs.Count == 0)
                         throw new InvalidDataException(
                             "FBX contains no triangle meshes (MeshFilter/SkinnedMeshRenderer).");
-                    var labels = new string[inputs.Count + 1];
-                    labels[0] = "(Keep original EMD geometry)";
-                    for (int i = 0; i < inputs.Count; i++)
-                        labels[i + 1] = inputs[i].label;
-                    EditorGUILayout.LabelField("EMD polygon / material slot ← FBX geometry",
-                        EditorStyles.boldLabel);
-                    for (int i = 0; i < originals.Count; i++)
-                        mapping[i] = EditorGUILayout.Popup(
-                            originals[i].name, Mathf.Clamp(mapping[i], 0, inputs.Count), labels);
-                    using (new EditorGUILayout.HorizontalScope())
+                    if (useGroupedSourceMapping)
                     {
-                        if (GUILayout.Button("Auto-map meshes"))
-                            AutoMap(originals, inputs);
-                        if (GUILayout.Button("Map in order"))
-                            MapInOrder(originals, inputs);
+                        var slots = new string[originals.Count + 1];
+                        slots[0] = "(UNASSIGNED — blocks export)";
+                        for (int i = 0; i < originals.Count; ++i)
+                            slots[i + 1] = "Slot " + i + " — " + originals[i].name;
+                        EditorGUILayout.LabelField("Every source mesh → original EMD polygon",
+                            EditorStyles.boldLabel);
+                        int unmapped = 0;
+                        for (int i = 0; i < inputs.Count; ++i)
+                        {
+                            if (i >= sourceToPolygon.Length)
+                                throw new InvalidDataException(
+                                    "More than " + sourceToPolygon.Length + " input submeshes.");
+                            sourceToPolygon[i] = EditorGUILayout.Popup(
+                                inputs[i].label,
+                                Mathf.Clamp(sourceToPolygon[i], 0, originals.Count),
+                                slots);
+                            if (sourceToPolygon[i] == 0) unmapped++;
+                        }
+                        if (unmapped > 0)
+                            EditorGUILayout.HelpBox(unmapped +
+                                " source mesh(es) still UNASSIGNED. Export will refuse " +
+                                "until every source has an explicit destination.",
+                                MessageType.Warning);
+                        if (GUILayout.Button("Initialize first slots in order (others UNASSIGNED)"))
+                            MapSourcesInOrder(originals, inputs);
+                    }
+                    else
+                    {
+                        var labels = new string[inputs.Count + 1];
+                        labels[0] = "(Keep original EMD geometry)";
+                        for (int i = 0; i < inputs.Count; i++)
+                            labels[i + 1] = inputs[i].label;
+                        EditorGUILayout.LabelField("EMD polygon / material slot ← source geometry",
+                            EditorStyles.boldLabel);
+                        for (int i = 0; i < originals.Count; i++)
+                            mapping[i] = EditorGUILayout.Popup(
+                                originals[i].name, Mathf.Clamp(mapping[i], 0, inputs.Count), labels);
+                        using (new EditorGUILayout.HorizontalScope())
+                        {
+                            if (GUILayout.Button("Auto-map meshes"))
+                                AutoMap(originals, inputs);
+                            if (GUILayout.Button("Map in order"))
+                                MapInOrder(originals, inputs);
+                        }
                     }
                     EditorGUILayout.Space();
                     if (GUILayout.Button("EXPORT DIRECT FBX → NEW .EMD", GUILayout.Height(34)))
@@ -382,18 +429,40 @@ namespace MusafirEx.EMD2Unity
         private void ResetMapping()
         {
             mapping = new int[32];
+            sourceToPolygon = new int[128];
             if (originalEmd == null || fbxSource == null || !IsOriginalWeapon(originalEmd))
                 return;
             try
             {
                 var slots = GetOriginalSlots(originalEmd);
                 var inputs = GetInputSlots(fbxSource);
-                AutoMap(slots, inputs);
+                if (inputs.Count > slots.Count && useExtendedReplacementRig)
+                {
+                    useGroupedSourceMapping = true;
+                    MapSourcesInOrder(slots, inputs);
+                }
+                else
+                {
+                    useGroupedSourceMapping = false;
+                    AutoMap(slots, inputs);
+                }
             }
             catch (Exception e)
             {
                 report = "Automatic mapping unavailable: " + e.Message;
             }
+        }
+
+        private void MapSourcesInOrder(List<OriginalSlot> originals, List<InputSlot> inputs)
+        {
+            sourceToPolygon = new int[128];
+            for (int i = 0; i < inputs.Count && i < originals.Count; ++i)
+                sourceToPolygon[i] = i + 1;
+            report = "Source-to-EMD mapping initialized. " +
+                Math.Min(originals.Count, inputs.Count) + " mapped in order, " +
+                Math.Max(0, inputs.Count - originals.Count) +
+                " sources remain UNASSIGNED and must be mapped manually. " +
+                "No geometry will be dropped silently.";
         }
 
         private void MapInOrder(List<OriginalSlot> original, List<InputSlot> inputs)
