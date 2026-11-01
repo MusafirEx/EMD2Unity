@@ -744,6 +744,113 @@ namespace MusafirEx.EMD2Unity
             return result;
         }
 
+        // A source GameObject may have many Renderers but the original EMD
+        // can have fewer polygon/material slots. Distinct textures cannot be
+        // preserved in a single EMD material slot without an atlas or new
+        // material-table/EMAT writer; default to an explicit refusal.
+        private static string SourceMaterialIdentity(InputSlot slot)
+        {
+            Renderer renderer = slot.renderer;
+            if (renderer == null)
+                return "(none)";
+            Material[] mats = renderer.sharedMaterials;
+            Material material = mats != null && slot.subMesh < mats.Length ?
+                mats[slot.subMesh] : null;
+            if (material == null) return "(none)";
+            Texture texture = null;
+            if (material.HasProperty("_MainTex"))
+                texture = material.GetTexture("_MainTex");
+            if (texture == null && material.HasProperty("_BaseMap"))
+                texture = material.GetTexture("_BaseMap");
+            if (texture == null && material.HasProperty("_BaseColorMap"))
+                texture = material.GetTexture("_BaseColorMap");
+            // Instance IDs are used only to compare within the current run.
+            // Identical texture names are not evidence of identical content.
+            return texture != null
+                ? "texture:" + texture.GetInstanceID() + " (" + texture.name + ")"
+                : "material:" + material.GetInstanceID() + " (" + material.name + ")";
+        }
+
+        private static Mesh MergeMappedMeshes(
+            List<Mesh> pieces, string meshName,
+            bool includeUV, bool includeColors, bool includeWeights)
+        {
+            if (pieces == null || pieces.Count == 0)
+                throw new InvalidDataException("No source meshes to merge.");
+            int count = 0, indices = 0;
+            foreach (Mesh p in pieces)
+            {
+                count = checked(count + p.vertexCount);
+                indices = checked(indices + p.triangles.Length);
+            }
+            if (count < 3 || count > 5000 || indices < 3 || indices > 32000 ||
+                count > ushort.MaxValue || indices % 3 != 0)
+                throw new InvalidDataException(meshName + ": combined source geometry (" +
+                    count + " vertices, " + indices + " indices) exceeds current " +
+                    "EMD per-polygon limits. Use fewer groups or implement a real " +
+                    "new-polygon writer instead of dropping geometry.");
+
+            var vertices = new Vector3[count];
+            var triangles = new int[indices];
+            var uvs = includeUV ? new Vector2[count] : null;
+            var colors = includeColors ? new Color32[count] : null;
+            var normals = includeWeights ? new Vector3[count] : null;
+            var weights = includeWeights ? new BoneWeight[count] : null;
+            int vertexOffset = 0, indexOffset = 0;
+            foreach (Mesh p in pieces)
+            {
+                Vector3[] vv = p.vertices;
+                int[] ii = p.triangles;
+                Array.Copy(vv, 0, vertices, vertexOffset, vv.Length);
+                if (includeUV)
+                {
+                    Vector2[] uv = p.uv;
+                    if (uv.Length != vv.Length)
+                        throw new InvalidDataException(meshName + ": source missing UV0.");
+                    Array.Copy(uv, 0, uvs, vertexOffset, uv.Length);
+                }
+                if (includeColors)
+                {
+                    Color32[] color = p.colors32;
+                    if (color.Length != vv.Length)
+                        throw new InvalidDataException(meshName + ": source missing vertex colors.");
+                    Array.Copy(color, 0, colors, vertexOffset, color.Length);
+                }
+                if (includeWeights)
+                {
+                    Vector3[] normal = p.normals;
+                    BoneWeight[] bone = p.boneWeights;
+                    if (normal.Length != vv.Length || bone.Length != vv.Length)
+                        throw new InvalidDataException(meshName +
+                            ": source normals/skin weights incomplete.");
+                    Array.Copy(normal, 0, normals, vertexOffset, normal.Length);
+                    Array.Copy(bone, 0, weights, vertexOffset, bone.Length);
+                }
+                for (int i = 0; i < ii.Length; ++i)
+                {
+                    if (ii[i] < 0 || ii[i] >= vv.Length)
+                        throw new InvalidDataException(meshName +
+                            ": invalid source triangle index.");
+                    triangles[indexOffset + i] = checked(vertexOffset + ii[i]);
+                }
+                vertexOffset += vv.Length;
+                indexOffset += ii.Length;
+            }
+            var combined = new Mesh { name = meshName, indexFormat = IndexFormat.UInt16 };
+            combined.vertices = vertices;
+            combined.triangles = triangles;
+            if (includeUV) combined.uv = uvs;
+            if (includeColors) combined.colors32 = colors;
+            if (includeWeights)
+            {
+                combined.normals = normals;
+                combined.boneWeights = weights;
+            }
+            else combined.RecalculateNormals();
+            combined.RecalculateBounds();
+            return combined;
+        }
+
         private void ExportNow(List<OriginalSlot> original, List<InputSlot> inputs)
         {
             GameObject temporary = null;
