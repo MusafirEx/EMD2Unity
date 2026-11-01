@@ -247,6 +247,8 @@ namespace MusafirEx.EMD2Unity
 
         private void OnGUI()
         {
+            if (sourceToPolygon == null || sourceToPolygon.Length != 128)
+                sourceToPolygon = new int[128];
             EditorGUILayout.LabelField("Direct GameObject / FBX → EMD Export", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
                 "ONE-STEP GEOMETRY EXPORT: Unity GameObject/FBX mesh + UV0 → NEW weapon .emd. " +
