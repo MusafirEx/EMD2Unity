@@ -868,34 +868,127 @@ namespace MusafirEx.EMD2Unity
                 var usedInputs = new HashSet<int>();
                 var replacement = new HashSet<string>();
                 var summary = new StringBuilder();
-                summary.AppendLine("EMD2Unity DIRECT FBX → EMD");
+                summary.AppendLine("EMD2Unity DIRECT GameObject/FBX -> EMD");
                 summary.AppendLine("EMD template: " + AssetDatabase.GetAssetPath(originalEmd));
-                summary.AppendLine("FBX root: " + fbxSource.name);
-                summary.AppendLine("Mode: direct; no persisted scene or mesh copy.");
-                for (int i = 0; i < original.Count; i++)
+                summary.AppendLine("Source GameObject: " + fbxSource.name);
+                summary.AppendLine("Source meshes: " + inputs.Count +
+                    "; target EMD polygons: " + original.Count);
+                summary.AppendLine("Mode: direct; no persisted intermediate Scene/mesh assets.");
+                var assignedParts = new List<InputSlot>[original.Count];
+                for (int i = 0; i < assignedParts.Length; ++i)
+                    assignedParts[i] = new List<InputSlot>();
+
+                if (useGroupedSourceMapping)
                 {
-                    int assigned = mapping[i];
-                    if (assigned == 0) continue;
-                    if (assigned < 1 || assigned > inputs.Count)
-                        throw new InvalidDataException(original[i].name + ": invalid mapping index.");
-                    if (!usedInputs.Add(assigned))
+                    if (!exportNativeFbxAttributes || emd == null)
                         throw new InvalidDataException(
-                            "Same FBX submesh mapped twice. Create unique FBX mesh slots first.");
+                            "Grouped weapon replacement requires native bone/skin export; " +
+                            "turn on Encode FBX normals and skin weights DIRECTLY.");
+                    if (inputs.Count > sourceToPolygon.Length)
+                        throw new InvalidDataException("Too many input slots for the " +
+                            sourceToPolygon.Length + "-slot mapping buffer.");
+                    for (int i = 0; i < inputs.Count; ++i)
+                    {
+                        int dest = sourceToPolygon[i];
+                        if (dest < 1 || dest > original.Count)
+                            throw new InvalidDataException(
+                                "Source mesh #" + i + " '" + inputs[i].label +
+                                "' is UNASSIGNED. Explicitly choose one of the original " +
+                                "EMD polygon slots for EVERY mesh. Nothing is dropped.");
+                        assignedParts[dest - 1].Add(inputs[i]);
+                        usedInputs.Add(i);
+                    }
+                    if (fullReplacement)
+                    {
+                        for (int i = 0; i < assignedParts.Length; ++i)
+                            if (assignedParts[i].Count == 0)
+                                throw new InvalidDataException(
+                                    "Original EMD polygon " + original[i].name +
+                                    " has no replacement source mesh. Full replacement " +
+                                    "requires all EMD slots to be assigned.");
+                    }
+
+                    // Original EMD materials may be shared by MULTIPLE polygon
+                    // slots. Check by actual destination MaterialIndex, not
+                    // polygon index, to catch unrepresentable source textures.
+                    var chosenTextures = new Dictionary<int, string>();
+                    for (int i = 0; i < original.Count; ++i)
+                    {
+                        int gameMaterialIndex = emd.Groups[i].MaterialIndex;
+                        foreach (InputSlot part in assignedParts[i])
+                        {
+                            string id = SourceMaterialIdentity(part);
+                            string previous;
+                            if (chosenTextures.TryGetValue(gameMaterialIndex, out previous) &&
+                                !string.Equals(previous, id, StringComparison.Ordinal))
+                            {
+                                string warning =
+                                    "EMD material #" + gameMaterialIndex +
+                                    " is shared by sources with DIFFERENT texture/material identities: '" +
+                                    previous + "' versus '" + id + "' (" + part.label + "). " +
+                                    "Only one game texture can be referenced by this original " +
+                                    "material slot; make a shared atlas with corrected UVs " +
+                                    "or implement new EMD material/EMAT slots.";
+                                if (!allowMergedDifferentTextures)
+                                    throw new InvalidDataException(warning +
+                                        " Set UNSAFE texture merge only for geometry-only testing.");
+                                summary.AppendLine("UNSAFE TEXTURE LOSS: " + warning);
+                            }
+                            else chosenTextures[gameMaterialIndex] = id;
+                        }
+                    }
+                    summary.AppendLine("Grouped mapping: every input mesh assigned exactly once.");
+                }
+                else
+                {
+                    for (int i = 0; i < original.Count; ++i)
+                    {
+                        int assigned = mapping[i];
+                        if (assigned == 0) continue;
+                        if (assigned < 1 || assigned > inputs.Count)
+                            throw new InvalidDataException(original[i].name +
+                                ": invalid mapping index.");
+                        if (!usedInputs.Add(assigned - 1))
+                            throw new InvalidDataException(
+                                "Same source submesh mapped twice. Use grouped mapping " +
+                                "if multiple source meshes must share one EMD polygon.");
+                        assignedParts[i].Add(inputs[assigned - 1]);
+                    }
+                    if (fullReplacement && usedInputs.Count != inputs.Count)
+                        throw new InvalidDataException(
+                            "Extended-rig source has " + inputs.Count + " meshes but only " +
+                            usedInputs.Count + " mapped. Enable grouped mapping and " +
+                            "explicitly assign EVERY source mesh; do not silently omit any.");
                 }
                 if (usedInputs.Count == 0)
-                    throw new InvalidDataException("Map at least one FBX mesh to an EMD polygon.");
+                    throw new InvalidDataException("Map at least one source mesh to an EMD polygon.");
 
-                // Build all requested meshes before creating temporary GameObjects.
+                // Each source is transformed, compacted and mapped to the
+                // extended EMD skeleton independently before concatenation.
+                // The resulting combined BoneWeights use EMD-global bone IDs,
+                // so local source skeleton index tables never collide.
                 var sourceMeshes = new Mesh[original.Count];
-                for (int i = 0; i < original.Count; i++)
+                for (int i = 0; i < original.Count; ++i)
                 {
-                    int assigned = mapping[i];
-                    if (assigned == 0) continue;
-                    InputSlot input = inputs[assigned - 1];
-                    Mesh created = BuildMappedMesh(
-                        input, fbxSource, bakeRootTransform, exportFbxUv0,
-                        exportFbxColors, exportNativeFbxAttributes,
-                        emd, rigidUnskinnedBoneIndex, forceRigidBone);
+                    if (assignedParts[i].Count == 0) continue;
+                    var pieces = new List<Mesh>();
+                    foreach (InputSlot input in assignedParts[i])
+                    {
+                        Mesh piece = BuildMappedMesh(
+                            input, fbxSource, bakeRootTransform, exportFbxUv0,
+                            exportFbxColors, exportNativeFbxAttributes,
+                            emd, rigidUnskinnedBoneIndex, forceRigidBone);
+                        newMeshes.Add(piece);
+                        pieces.Add(piece);
+                        summary.AppendLine("  " + original[i].name + " <= " + input.label +
+                            ": " + piece.vertexCount + " vertices, " +
+                            piece.triangles.Length / 3 + " triangles; material=" +
+                            SourceMaterialIdentity(input));
+                    }
+                    Mesh created = pieces.Count == 1 ? pieces[0] :
+                        MergeMappedMeshes(pieces, original[i].name + "_GameObjectMerged",
+                            exportFbxUv0, exportFbxColors, exportNativeFbxAttributes);
+                    if (pieces.Count > 1) newMeshes.Add(created);
                     if (exportNativeFbxAttributes)
                     {
                         if (emd == null || i >= emd.Groups.Count)
@@ -908,26 +1001,25 @@ namespace MusafirEx.EMD2Unity
                         {
                             string warning = original[i].name +
                                 ": original game polygon uses bones [" +
-                                BoneNames(emd, originalBones) + "] but new FBX uses [" +
-                                BoneNames(emd, exportedBones) + "]. Missing bone influences [" +
+                                BoneNames(emd, originalBones) + "] but replacement uses [" +
+                                BoneNames(emd, exportedBones) + "]. Missing old influences [" +
                                 BoneNames(emd, missing) + "].";
                             if (!fullReplacement && !allowBoneCollapse)
                                 throw new InvalidDataException(warning +
                                     " This can stretch or detach geometry in game. " +
-                                    "Skin the FBX mesh to the matching source EMD bones in Blender, " +
-                                    "or explicitly enable Allow missing original bone influences " +
-                                    "(unsafe).");
+                                    "Skin source meshes to matching EMD bones, or explicitly " +
+                                    "enable the unsafe old-influence collapse override.");
                             summary.AppendLine((fullReplacement
-                                ? "EXTENDED RIG (original mesh influence replacement expected): "
+                                ? "EXTENDED RIG (intentional original influence replacement): "
                                 : "UNSAFE BONE COLLAPSE: ") + warning);
                         }
                     }
-                    newMeshes.Add(created);
                     sourceMeshes[i] = created;
                     replacement.Add(original[i].name);
-                    summary.AppendLine(original[i].name + " <= " + input.label +
-                        ": " + created.vertexCount + " vertices; " +
-                        created.triangles.Length / 3 + " triangles");
+                    summary.AppendLine("COMBINED " + original[i].name +
+                        ": " + assignedParts[i].Count + " source part(s), " +
+                        created.vertexCount + " vertices, " +
+                        created.triangles.Length / 3 + " triangles.");
                 }
 
                 temporary = Instantiate(originalEmd);
