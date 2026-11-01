@@ -46,6 +46,8 @@ namespace MusafirEx.EMD2Unity
             public string generatedTemplatePath;
             public string note = "Not game-ready: second step must write replacement meshes; source textures must be encoded/registered as game-supported DDS/EMAT resources.";
             public string[] sourceBoneNames;
+            public string[] sourceMeshPaths;
+            public int sourceMeshCount;
             public MaterialReference[] materials;
         }
 
@@ -259,10 +261,12 @@ namespace MusafirEx.EMD2Unity
                     path = RelativePath(sourceGameObject.transform, renderer.transform)
                 });
             }
-            if (inputs.Count != doc.Groups.Count)
-                throw new InvalidDataException("Source has " + inputs.Count +
-                    " meshes while template has " + doc.Groups.Count +
-                    " polygon slots. This alpha requires exact slot count; no silent merging/dropping.");
+            if (inputs.Count == 0 || inputs.Count > 128)
+                throw new InvalidDataException("Source must contain 1–128 compatible meshes, got " +
+                    inputs.Count + ". This is a bounded alpha writer.");
+            // A source GameObject may have more meshes than the binary EMD has
+            // polygon slots. Direct Export provides explicit source-to-slot
+            // assignment and merges geometry only when the user maps all parts.
             var skinnedRenderers = inputs.Select(m => m.renderer as SkinnedMeshRenderer)
                 .Where(m => m != null).ToArray();
             if (skinnedRenderers.Length == 0)
@@ -302,17 +306,21 @@ namespace MusafirEx.EMD2Unity
             var materials = new MaterialReference[inputs.Count];
             for (int i = 0; i < inputs.Count; ++i)
             {
-                int matIndex = doc.Groups[i].MaterialIndex;
-                if (matIndex < 0 || matIndex >= doc.Materials.Count)
+                int matIndex = i < doc.Groups.Count ?
+                    doc.Groups[i].MaterialIndex : -1;
+                if (matIndex >= doc.Materials.Count)
                     throw new InvalidDataException("Invalid original material ID for polygon " + i);
                 Material[] assigned = inputs[i].renderer.sharedMaterials;
                 Material mat = assigned.Length > 0 ? assigned[0] : null;
                 Texture texture = GetMainTexture(mat);
                 materials[i] = new MaterialReference {
-                    polygon = doc.Groups[i].Name + " <- " + inputs[i].path,
+                    polygon = (i < doc.Groups.Count ? doc.Groups[i].Name : "(mapping pending)") +
+                        " <- " + inputs[i].path,
                     originalMaterialIndex = matIndex,
-                    originalMaterialName = doc.Materials[matIndex].Name,
-                    originalTextureName = doc.Materials[matIndex].TextureName,
+                    originalMaterialName = matIndex >= 0 ?
+                        doc.Materials[matIndex].Name : "(mapping pending)",
+                    originalTextureName = matIndex >= 0 ?
+                        doc.Materials[matIndex].TextureName : "(mapping pending)",
                     sourceMaterialName = mat != null ? mat.name : "(none)",
                     sourceTextureName = texture != null ? texture.name : "(none)",
                     sourceTextureAssetPath = texture != null ? AssetDatabase.GetAssetPath(texture) : ""
@@ -431,7 +439,14 @@ namespace MusafirEx.EMD2Unity
             Put32(result, 0x5C, a.uvStart + delta);
             Put32(result, 0x60, a.uvStart + delta - 16);
             if (patchTextureReferenceNames)
+            {
+                if (a.meshes.Count != a.document.Groups.Count)
+                    throw new InvalidDataException("Cannot rename per-slot textures while " +
+                        a.meshes.Count + " source meshes have not yet been mapped to " +
+                        a.document.Groups.Count + " target slots. Disable rename and use " +
+                        "the final Direct Export material manifest.");
                 PatchMaterialNames(result, a, delta);
+            }
             EmdDocument parsed = EmdParser.Parse(result);
             if (parsed.Bones.Count != oldCount + added ||
                 parsed.Groups.Count != a.document.Groups.Count ||
@@ -474,6 +489,8 @@ namespace MusafirEx.EMD2Unity
                     originalEmdAssetPath = a.originalPath,
                     generatedTemplatePath = path,
                     sourceBoneNames = a.bones.Select(b => b.name).ToArray(),
+                    sourceMeshPaths = a.meshes.Select(m => m.path).ToArray(),
+                    sourceMeshCount = a.meshes.Count,
                     materials = a.materials
                 };
                 string manifestPath = Path.ChangeExtension(fullPath, ".replacement.json");
@@ -493,6 +510,9 @@ namespace MusafirEx.EMD2Unity
                     " + source bones: " + a.bones.Length +
                     "\nOriginal mesh slots/material count preserved: " + a.document.Groups.Count +
                     "/" + a.document.Materials.Count +
+                    "\nSource renderers to map: " + a.meshes.Count +
+                    (a.meshes.Count > a.document.Groups.Count ?
+                        " (some source meshes must share a target slot)" : "") +
                     "\nManifest: " + manifestPath +
                     "\nNEXT: Direct FBX Export window opens with this EMD template and axe002." +
                     "\nWARNING: Bone inverse matrix and EMD external texture packaging are not game-validated. " +
@@ -558,15 +578,22 @@ namespace MusafirEx.EMD2Unity
                         foreach (Transform t in a.bones)
                             builder.AppendLine("  +" + t.name + " <- " +
                                 (t == a.rigRoot ? "original attachment bone #" + attachmentBoneIndex : t.parent.name));
+                        builder.AppendLine("Source meshes: " + a.meshes.Count +
+                            "; existing EMD polygon slots: " + a.document.Groups.Count);
                         for (int i = 0; i < a.meshes.Count; i++)
                         {
                             var m = a.meshes[i];
-                            builder.AppendLine("  polygon slot " + i + ": " +
-                                a.document.Groups[i].Name + " <- " + m.path + " (" +
+                            builder.AppendLine("  SOURCE #" + i + ": " + m.path + " (" +
                                 m.mesh.vertexCount + " vertices; " +
-                                m.mesh.GetIndexCount(0) / 3 + " triangles; texture " +
+                                m.mesh.GetIndexCount(0) / 3 + " triangles; material " +
+                                a.materials[i].sourceMaterialName + "; texture " +
                                 a.materials[i].sourceTextureName + ")");
                         }
+                        if (a.meshes.Count != a.document.Groups.Count)
+                            builder.AppendLine("MAPPING REQUIRED: assign EVERY source mesh " +
+                                "to one of the existing polygon slots in the Direct Export " +
+                                "window. Nothing is silently omitted. Different textures " +
+                                "merged into one slot require an atlas or explicit unsafe override.");
                         builder.AppendLine("Original texture slots are retained by default. " +
                             "No new game texture archive is written.");
                         report = builder.ToString();
