@@ -577,6 +577,20 @@ namespace MusafirEx.EMD2Unity
             {
                 if (parsed.Bones[oldCount + i].Name != a.bones[i].name)
                     throw new InvalidDataException("Imported EMD appended-bone name mismatch.");
+                int expectedParent = a.bones[i] == a.rigRoot ?
+                    attachmentBoneIndex :
+                    boneIndices[a.bones[i].parent];
+                if (parsed.Bones[oldCount + i].Parent != expectedParent ||
+                    parsed.Bones[oldCount + i].NodeID != nextNode + i)
+                    throw new InvalidDataException(
+                        "Appended bone parent or NodeID mismatch after EMD parser round-trip " +
+                        "(bone " + a.bones[i].name + ").");
+                Matrix4x4 primary = ReadAffineMatrix(result,
+                    a.oldBoneEnd + i * BoneRecordSize + 0x120);
+                if (MatrixMaxError(primary, parsed.Bones[oldCount + i].LocalMatrix) > 0.0001f)
+                    throw new InvalidDataException(
+                        "Appended bone primary matrix was not preserved by EMD parser " +
+                        "(bone " + a.bones[i].name + ").");
             }
             return result;
         }
@@ -636,7 +650,10 @@ namespace MusafirEx.EMD2Unity
                         " (some source meshes must share a target slot)" : "") +
                     "\nManifest: " + manifestPath +
                     "\nNEXT: Direct FBX Export window opens with this EMD template and axe002." +
-                    "\nWARNING: Bone inverse matrix and EMD external texture packaging are not game-validated. " +
+                    "\nSecondary matrix strategy: " + a.secondaryMatrixKind +
+                    (a.secondaryMatrixKind == SecondaryMatrixKind.Unknown ?
+                        " (UNSAFE donor-copy override)" : " (matches originals; game test pending)") +
+                    "\nWARNING: Bone secondary matrix and EMD external texture packaging are not game-validated. " +
                     "This template does NOT contain axe002 mesh geometry until Direct Export is run.";
                 Debug.Log("EMD2Unity full replacement alpha:\n" + report);
             }
@@ -679,7 +696,15 @@ namespace MusafirEx.EMD2Unity
             patchTextureReferenceNames = EditorGUILayout.ToggleLeft(
                 "Experimental: rename existing EMD texture references (needs game DDS/EMAT)", patchTextureReferenceNames);
             allowUnverifiedBindMatrix = EditorGUILayout.ToggleLeft(
-                "Unsafe: permit unknown second-bone-matrix layout (only for isolated test)", allowUnverifiedBindMatrix);
+                "UNSAFE: copy donor secondary matrix if NO model fits (not game validated)",
+                allowUnverifiedBindMatrix);
+            if (allowUnverifiedBindMatrix)
+                EditorGUILayout.HelpBox(
+                    "WARNING: An unresolved secondary matrix is copied unchanged " +
+                    "from an existing bone into each new WP bone. This does NOT " +
+                    "establish correct bind poses and may cause severe stretching. " +
+                    "Use only with backups for isolated binary experiments.",
+                    MessageType.Error);
             using (new EditorGUILayout.HorizontalScope())
             {
                 if (GUILayout.Button("Analyze selected GameObject (read-only)"))
@@ -693,9 +718,29 @@ namespace MusafirEx.EMD2Unity
                         builder.AppendLine("Source: " + sourceGameObject.name);
                         builder.AppendLine("Original bones: " + a.document.Bones.Count +
                             "; appended source bones: " + a.bones.Length);
-                        builder.AppendLine("Original bone reverse-matrix vs inverse-local max error: " +
-                            a.maxInverseDeviation.ToString("G6") +
-                            " (<= 0.05 considered candidate; not proof of game compatibility)");
+                        builder.AppendLine("EMD bone record: parent +0x110, raw NodeID +0x118, " +
+                            "primary XYZ matrix +0x120, secondary 16-float block +0x160.");
+                        builder.AppendLine("The first block is used by the EMD importer; " +
+                            "secondary semantics have not been proved.");
+                        builder.AppendLine("Secondary matrix candidate selected: " +
+                            a.secondaryMatrixKind + " (tolerance " +
+                            SecondaryMatrixTolerance.ToString("G6") + ")");
+                        builder.AppendLine("Maximum error across ALL original bones:");
+                        builder.AppendLine("  inverse local: " +
+                            a.maxInverseDeviation.ToString("G9"));
+                        builder.AppendLine("  inverse world: " +
+                            a.maxWorldInverseDeviation.ToString("G9"));
+                        builder.AppendLine("  same local: " +
+                            a.maxSameLocalDeviation.ToString("G9"));
+                        builder.AppendLine("  same world: " +
+                            a.maxSameWorldDeviation.ToString("G9"));
+                        builder.AppendLine("Per-original-bone evidence (no file writes):");
+                        foreach (string line in a.matrixDetailRows)
+                            builder.AppendLine(line);
+                        if (a.secondaryMatrixKind == SecondaryMatrixKind.Unknown)
+                            builder.AppendLine("REMAINING BLOCKER: Unknown secondary-matrix " +
+                                "semantics. Do NOT enable the unsafe override; supply this " +
+                                "Console report or the original EMD for binary comparison.");
                         foreach (Transform t in a.bones)
                             builder.AppendLine("  +" + t.name + " <- " +
                                 (t == a.rigRoot ? "original attachment bone #" + attachmentBoneIndex : t.parent.name));
