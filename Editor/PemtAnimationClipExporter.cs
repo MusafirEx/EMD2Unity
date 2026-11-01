@@ -150,9 +150,8 @@ namespace MusafirEx.EMD2Unity
                 throw new InvalidDataException("The source must be an imported .pemt container.");
             var emdImporter=AssetImporter.GetAtPath(modelPath) as EmdImporter;
             if(emdImporter==null)throw new InvalidDataException("Selected model is not imported by EMD2Unity.");
-            SerializedObject settings=new SerializedObject(emdImporter);
-            bool swap=settings.FindProperty("swapYAndZ").boolValue;
-            float scale=settings.FindProperty("modelScale").floatValue;
+            // Use EMD's effective basis; the serialized swapYAndZ field alone
+            // misses Rotate -90 X, Mirror X, and STG preset overrides.
             Transform armature=model.transform.Find("Armature");
             if(armature==null)throw new InvalidDataException("Imported EMD model has no Armature. Enable Import Skeleton.");
             var paths=new Dictionary<int,string>();
@@ -216,8 +215,7 @@ namespace MusafirEx.EMD2Unity
                         {
                             int p=valuesAt+k*8;
                             Vector3 delta=new Vector3(Half(b,p),Half(b,p+2),Half(b,p+4));
-                            if(swap)delta=new Vector3(delta.x,delta.z,delta.y);
-                            pos[k]=joint.localPosition+delta*scale;
+                            pos[k]=joint.localPosition+emdImporter.ConvertPemtPositionDelta(delta);
                         }
                         WritePosition(clip,path,time,pos);
                     }
@@ -241,8 +239,8 @@ namespace MusafirEx.EMD2Unity
                                     "Experimental 0x02040022 scale hypothesis rejected " +
                                     "for bone j" + jointId + " key " + k +
                                     " (non-finite, nonzero padding or extreme XYZ).");
-                            Vector3 xyz = swap ? new Vector3(x, z, y) : new Vector3(x, y, z);
-                            values[k] = Vector3.Scale(joint.localScale, xyz);
+                            Vector3 factors = emdImporter.ConvertPemtScaleFactors(new Vector3(x, y, z));
+                            values[k] = Vector3.Scale(joint.localScale, factors);
                             if (!Finite(values[k].x) || !Finite(values[k].y) ||
                                 !Finite(values[k].z))
                                 throw new InvalidDataException(
@@ -262,7 +260,7 @@ namespace MusafirEx.EMD2Unity
                         {
                             int p=valuesAt+k*8;
                             Quaternion delta=new Quaternion(Half(b,p),Half(b,p+2),Half(b,p+4),Half(b,p+6));
-                            if(swap)delta=new Quaternion(-delta.x,-delta.z,-delta.y,delta.w);
+                            delta=emdImporter.ConvertPemtRotationDelta(delta);
                             float sq=delta.x*delta.x+delta.y*delta.y+delta.z*delta.z+delta.w*delta.w;
                             if(sq<0.5f||sq>1.5f)throw new InvalidDataException("Invalid quaternion on bone j"+jointId);
                             float inv=1f/Mathf.Sqrt(sq);

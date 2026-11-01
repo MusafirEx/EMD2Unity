@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — PEMT coordinate sync and STG Mirror X default
+
+- PEMT position and quaternion rotation deltas now use the same effective coordinate basis as the matching EMD model. Fixes motion orientation when Rotate -90 X or Mirror Left/Right (X Axis) is selected; also respects stage preset overrides. Experimental scale preview follows the same axis permutation.
+- User-confirmed PEMT motion looks correct on the experimental branch (commit `97735dba`); Unity compilation validation from the connector is still unavailable.
+- Automatic STG model preset now forces **Mirror Left/Right (X Axis) ON**, while keeping Z-up conversion Off, UV 16-byte alignment On, stage RGBA vertex colors On and all other STG defaults unchanged. CHR/CSD model defaults are unaffected.
+- The importer uses composite reflection parity when updating stage triangle winding and applies the matching basis to bones. The STG Model Inspector displays Mirror X as enabled while preset is active.
+- **ScriptedImporter revision 18** reimports existing EMD assets. Stage appearance will change because the X-mirror is now applied by default. Old `.anim` assets are not overwritten by PEMT batch export.
+
 ## 0.5.9 — automatic STG importer defaults
 
 - Automatically enable a **stage-only import preset** for `.emd` files under an `stg` folder or `STG<number>` directory (case-insensitive). The preset is enabled by default, including for previously imported STG assets after the importer revision 16 upgrade.

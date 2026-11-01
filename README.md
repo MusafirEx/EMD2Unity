@@ -26,7 +26,7 @@ Then in Unity select **Assets → Import Package → Custom Package...** and sel
 
 ### Experimental coordinate orientation controls (opt-in)
 
-If turning off **Convert PS3 Z-Up to Unity Y-Up** appears to swap a character's or stage's left and right, the importer now provides *separate* coordinate controls in the EMD **Model** tab. Existing assets keep their original behaviour unless you opt in:
+If turning off **Convert PS3 Z-Up to Unity Y-Up** appears to swap a character's or stage's left and right, the importer now provides *separate* coordinate controls in the EMD **Model** tab. Character and other non-STG assets keep their original behaviour unless you opt in. STG assets use the automatic stage preset described below:
 
 | Option | Vertex-space transform | Reflection parity |
 | --- | --- | --- |
@@ -37,17 +37,24 @@ If turning off **Convert PS3 Z-Up to Unity Y-Up** appears to swap a character's 
 
 **Rotate -90 X** is a proper basis rotation; the old swap was a reflection. **Mirror Left/Right** can be used independently, including alongside either Z-to-Y mode. The importer applies the same orthogonal coordinate basis to mesh positions and skeleton matrices, and reverses triangle winding only when the composite basis has negative parity. UV data, materials and original game files are untouched.
 
-For STG models, **Use STG Import Defaults** forces both Z-to-Y conversion and X mirroring **off**, preserving the previously tested stage preset. Uncheck **Use STG Import Defaults** on a test asset to access the new controls; then explicitly reproduce the working stage UV settings if needed (16-byte alignment, RGBA colors). Do not use **Reverse Triangle Winding** to solve actual left/right mirroring; it only adjusts face orientation.
+For STG models, **Use STG Import Defaults** forces Z-to-Y conversion **off** and **Mirror Left/Right (X Axis) on**. The stage mirror also updates face winding and the skeleton basis. Uncheck **Use STG Import Defaults** on a test asset to access the manual controls; then explicitly reproduce the working stage UV settings if needed (16-byte alignment, RGBA colors). Do not use **Reverse Triangle Winding** to solve actual left/right mirroring; it only adjusts face orientation.
 
 This is an experimental coordinate-system correction, not a verified match to the original PS3 game. Compare a known asymmetric object with the **same camera position and forward direction**, and test skin/PEMT animations separately after changing coordinate basis. Live Unity compilation and visual validation were unavailable when this change was authored.
 
-### Automatic STG model import defaults (v0.5.9)
+### PEMT and EMD orientation consistency (experimental)
 
-EMD2Unity automatically recognizes stage models located under a case-insensitive `stg` folder or in a folder named `STG` followed by digits, such as `Assets/KRBWS/stg/STG31/model/AREA02.emd`. New and existing stage EMD assets use the following **effective** defaults once imported with v0.5.9:
+When you enable **Rotate -90 X** or **Mirror Left/Right (X Axis)** on an EMD model, PEMT preview and new `.anim` exports must use exactly the same coordinate basis as the imported mesh and bones. The PEMT animation exporter now delegates **position deltas**, **quaternion rotation deltas**, and preview-only **experimental scale multipliers** to the EMD importer's effective coordinate conversion (including stage presets). The previous exporter checked only the serialized `swapYAndZ` boolean and could generate incorrectly oriented animations for the newer options. Legacy and default imports retain their original conversion.
+
+**Important:** Existing exported `.anim` assets are not rewritten. Back up and manually remove/recreate affected exported clips if you change EMD coordinate settings; **Export All** intentionally skips existing filenames. Use the PEMT **Animation Preview** to compare the corrected pose before regenerating clips. An unrelated PEMT parsing failure, unsupported track marker or missing-bone error is **not** automatically solved by this coordinate change; consult the full Console message / Copy Motion Track Report. New conversion requires Unity compilation and actual CHR/PEMT visual validation.
+
+### Automatic STG model import defaults (updated)
+
+EMD2Unity automatically recognizes stage models located under a case-insensitive `stg` folder or in a folder named `STG` followed by digits, such as `Assets/KRBWS/stg/STG31/model/AREA02.emd`. New and existing stage EMD assets use the following **effective** defaults with the updated importer:
 
 | Model setting | STG default |
 | --- | --- |
 | Convert PS3 Z-Up to Unity Y-Up | **Off** |
+| Mirror Left/Right (X Axis) | **On** |
 | Align UV Blocks to 16 Bytes | **On** |
 | Stage Vertex Colors Are RGBA | **On** |
 | Preserve Vertex Colors | **On** |
@@ -56,7 +63,7 @@ EMD2Unity automatically recognizes stage models located under a case-insensitive
 
 This preset is based on user-verified STG texturing and is **on by default** for stage folders; no manual configuration is needed. In the EMD **Model** Inspector, leave **Use STG Import Defaults** checked to display the enforced effective values. To customize a particular stage, uncheck it and use the manual settings below (any stored mesh overrides are preserved but ignored while the preset is active).
 
-Stage defaults do **not** apply to non-STG character/motion models; no original game EMD, EMAT or DDS data is edited. Existing EMD subassets will be reimported when Unity detects the updated ScriptedImporter revision 16. You can confirm the actual effective parser flags in **Diagnose EMD UV Mapping (Read-only)**.
+Stage defaults do **not** apply to non-STG character/motion models; no original game EMD, EMAT or DDS data is edited. Existing EMD subassets will be reimported when Unity detects the updated ScriptedImporter revision 18. The STG Mirror X setting now defaults to On, changing stage geometry orientation; user-authored CHR/CSD settings are unchanged. You can confirm the actual effective parser flags in **Diagnose EMD UV Mapping (Read-only)**.
 
 
 ## How to use

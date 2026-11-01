@@ -24,7 +24,7 @@ namespace MusafirEx.EMD2Unity
         [Range(0, 6)] public int sourceChannel;
     }
 
-    [ScriptedImporter(17, "emd")]
+    [ScriptedImporter(18, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         // LegacySwapYZ preserves earlier imports. RotateMinus90X is a true
@@ -87,7 +87,9 @@ namespace MusafirEx.EMD2Unity
             !customizeStageImport && IsStageEmdPath(assetPath);
 
         private bool EffectiveSwapYAndZ => !IsUsingStageDefaults && swapYAndZ;
-        private bool EffectiveMirrorX => !IsUsingStageDefaults && mirrorX;
+        // STG assets default to mirrored X with the preset enabled.
+        // Manual model settings are preserved, and CHR/CSD still default off.
+        private bool EffectiveMirrorX => IsUsingStageDefaults || mirrorX;
         // An axis exchange or a single reflection changes triangle parity.
         // A true 90-degree rotation does not. XOR makes independent mirrors compose.
         private bool EffectiveNegativeParity =>
@@ -132,13 +134,41 @@ namespace MusafirEx.EMD2Unity
             }
         }
 
-        private Vector3 ConvertVector(Vector3 v)
+        private Vector3 ConvertBasisVector(Vector3 v)
         {
             float x = EffectiveMirrorX ? -v.x : v.x;
             if (EffectiveSwapYAndZ)
                 return new Vector3(x, v.z,
-                    upAxisConversion == UpAxisConversion.RotateMinus90X ? -v.y : v.y) * modelScale;
-            return new Vector3(x, v.y, v.z) * modelScale;
+                    upAxisConversion == UpAxisConversion.RotateMinus90X ? -v.y : v.y);
+            return new Vector3(x, v.y, v.z);
+        }
+
+        private Vector3 ConvertVector(Vector3 v) => ConvertBasisVector(v) * modelScale;
+
+        // PEMT must follow the EFFECTIVE mesh/skeleton basis, including STG
+        // preset overrides, rather than reading the raw swapYAndZ field.
+        internal Vector3 ConvertPemtPositionDelta(Vector3 sourceDelta) =>
+            ConvertVector(sourceDelta);
+
+        internal Quaternion ConvertPemtRotationDelta(Quaternion sourceDelta)
+        {
+            // For any orthogonal basis B, B*R(q)*B^-1 corresponds to
+            // q'=(det(B)*B*(q.x,q.y,q.z), q.w). Negative determinant matters:
+            // the legacy Y/Z swap and mirror-X are reflections, not rotations.
+            Vector3 vector = ConvertBasisVector(
+                new Vector3(sourceDelta.x, sourceDelta.y, sourceDelta.z));
+            if (EffectiveNegativeParity) vector = -vector;
+            return new Quaternion(vector.x, vector.y, vector.z, sourceDelta.w);
+        }
+
+        internal Vector3 ConvertPemtScaleFactors(Vector3 sourceFactors)
+        {
+            // Local scale multipliers are axis quantities, not signed vectors;
+            // mirroring an axis does not negate its scale multiplier. 0x22
+            // remains a preview-only, unverified experimental interpretation.
+            return EffectiveSwapYAndZ ?
+                new Vector3(sourceFactors.x, sourceFactors.z, sourceFactors.y) :
+                sourceFactors;
         }
 
         private Matrix4x4 ConvertBoneMatrix(Matrix4x4 source)
