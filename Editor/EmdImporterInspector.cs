@@ -75,7 +75,7 @@ namespace MusafirEx.EMD2Unity
                         using (new EditorGUI.DisabledScope(true))
                         {
                             EditorGUILayout.Toggle("Convert PS3 Z-Up to Unity Y-Up", false);
-                            EditorGUILayout.Toggle("Mirror Left/Right (X Axis)", false);
+                            EditorGUILayout.Toggle("Mirror Left/Right (X Axis)", true);
                             EditorGUILayout.Toggle("Preserve Vertex Colors", true);
                             EditorGUILayout.Toggle("Stage Vertex Colors Are RGBA", true);
                         }
