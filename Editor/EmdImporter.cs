@@ -24,12 +24,22 @@ namespace MusafirEx.EMD2Unity
         [Range(0, 6)] public int sourceChannel;
     }
 
-    [ScriptedImporter(16, "emd")]
+    [ScriptedImporter(17, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
+        // LegacySwapYZ preserves earlier imports. RotateMinus90X is a true
+        // right-handed 90-degree basis rotation from Z-up to Y-up.
+        private enum UpAxisConversion
+        {
+            LegacySwapYZ = 0,
+            RotateMinus90X = 1
+        }
+
         [Header("Model")]
         [SerializeField, Min(0.00001f)] private float modelScale = 1f;
         [SerializeField] private bool swapYAndZ = true;
+        [SerializeField] private UpAxisConversion upAxisConversion = UpAxisConversion.LegacySwapYZ;
+        [SerializeField] private bool mirrorX = false;
         [SerializeField] private bool reverseWinding = false;
         [SerializeField] private bool useVertexColors = true;
         // Stage models inspected so far frequently store vertex colors as
@@ -77,6 +87,12 @@ namespace MusafirEx.EMD2Unity
             !customizeStageImport && IsStageEmdPath(assetPath);
 
         private bool EffectiveSwapYAndZ => !IsUsingStageDefaults && swapYAndZ;
+        private bool EffectiveMirrorX => !IsUsingStageDefaults && mirrorX;
+        // An axis exchange or a single reflection changes triangle parity.
+        // A true 90-degree rotation does not. XOR makes independent mirrors compose.
+        private bool EffectiveNegativeParity =>
+            EffectiveMirrorX ^ (EffectiveSwapYAndZ &&
+                upAxisConversion == UpAxisConversion.LegacySwapYZ);
         private bool EffectiveUseVertexColors => IsUsingStageDefaults || useVertexColors;
         internal bool EffectiveVertexColorsRgbaLast =>
             IsUsingStageDefaults || vertexColorsRgbaLast;
@@ -116,18 +132,28 @@ namespace MusafirEx.EMD2Unity
             }
         }
 
-        private Vector3 ConvertVector(Vector3 v) =>
-            (EffectiveSwapYAndZ ? new Vector3(v.x, v.z, v.y) : v) * modelScale;
+        private Vector3 ConvertVector(Vector3 v)
+        {
+            float x = EffectiveMirrorX ? -v.x : v.x;
+            if (EffectiveSwapYAndZ)
+                return new Vector3(x, v.z,
+                    upAxisConversion == UpAxisConversion.RotateMinus90X ? -v.y : v.y) * modelScale;
+            return new Vector3(x, v.y, v.z) * modelScale;
+        }
 
         private Matrix4x4 ConvertBoneMatrix(Matrix4x4 source)
         {
+            Matrix4x4 basis = Matrix4x4.identity;
+            if (EffectiveMirrorX) basis.m00 = -1f;
             if (EffectiveSwapYAndZ)
             {
-                Matrix4x4 flip = Matrix4x4.identity;
-                flip.m11 = 0f; flip.m22 = 0f;
-                flip.m12 = 1f; flip.m21 = 1f;
-                source = flip * source * flip;
+                basis.m11 = 0f; basis.m22 = 0f;
+                basis.m12 = 1f;
+                basis.m21 = upAxisConversion == UpAxisConversion.RotateMinus90X ? -1f : 1f;
             }
+            // All supported bases are orthogonal: inverse(basis) = transpose(basis).
+            // Conjugation changes the coordinate frame without breaking bone hierarchy.
+            source = basis * source * basis.transpose;
             source.m03 *= modelScale;
             source.m13 *= modelScale;
             source.m23 *= modelScale;
@@ -469,7 +495,7 @@ namespace MusafirEx.EMD2Unity
                 for (int v = 0; v < verts.Length; ++v) verts[v] = ConvertVector(info.Vertices[v]);
                 mesh.vertices = verts;
                 int[] triangles = (int[])info.Triangles.Clone();
-                if (reverseWinding ^ EffectiveSwapYAndZ)
+                if (reverseWinding ^ EffectiveNegativeParity)
                     for (int t = 0; t < triangles.Length; t += 3)
                         { int temp = triangles[t]; triangles[t] = triangles[t + 2]; triangles[t + 2] = temp; }
                 mesh.triangles = triangles;

@@ -75,6 +75,7 @@ namespace MusafirEx.EMD2Unity
                         using (new EditorGUI.DisabledScope(true))
                         {
                             EditorGUILayout.Toggle("Convert PS3 Z-Up to Unity Y-Up", false);
+                            EditorGUILayout.Toggle("Mirror Left/Right (X Axis)", false);
                             EditorGUILayout.Toggle("Preserve Vertex Colors", true);
                             EditorGUILayout.Toggle("Stage Vertex Colors Are RGBA", true);
                         }
@@ -87,8 +88,21 @@ namespace MusafirEx.EMD2Unity
                     }
                     else
                     {
-                        EditorGUILayout.PropertyField(serializedObject.FindProperty("swapYAndZ"),
+                        SerializedProperty convertUp = serializedObject.FindProperty("swapYAndZ");
+                        EditorGUILayout.PropertyField(convertUp,
                             new GUIContent("Convert PS3 Z-Up to Unity Y-Up"));
+                        using (new EditorGUI.DisabledScope(!convertUp.boolValue))
+                            EditorGUILayout.PropertyField(serializedObject.FindProperty("upAxisConversion"),
+                                new GUIContent("Z-Up Conversion Method"));
+                        EditorGUILayout.PropertyField(serializedObject.FindProperty("mirrorX"),
+                            new GUIContent("Mirror Left/Right (X Axis)"));
+                        EditorGUILayout.HelpBox(
+                            "Legacy Swap Y/Z uses (x,z,y), which changes handedness and is kept " +
+                            "for compatibility. Rotate -90 X uses (x,z,-y), a true rotation. " +
+                            "Mirror Left/Right flips X independently, with matching triangle " +
+                            "winding and bone-frame conversion. Try these on a duplicate first; " +
+                            "they do not modify source game files.",
+                            MessageType.Info);
                         EditorGUILayout.PropertyField(serializedObject.FindProperty("useVertexColors"),
                             new GUIContent("Preserve Vertex Colors"));
                         EditorGUILayout.PropertyField(serializedObject.FindProperty("vertexColorsRgbaLast"),
