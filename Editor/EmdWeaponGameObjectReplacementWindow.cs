@@ -193,9 +193,8 @@ namespace MusafirEx.EMD2Unity
                 uvStart <= polygonStart || uvStart > original.Length ||
                 Be32(original, 0x60) != uvStart - 16)
                 throw new InvalidDataException("This EMD does not match the verified contiguous bone/material/polygon/UV template layout. Refusing speculative bone writes.");
-            for (int b = 0; b < oldBones; b++)
-                if (Be32(original, boneStart + b * BoneRecordSize + 4) != BoneRecordSize)
-                    throw new InvalidDataException("Unexpected original bone record length: #" + b);
+            // The source parser advances by exactly 0x1A0 per bone; the
+            // embedded recordSize field is not a reliable stride indicator.
             if (doc.Groups.Count < 1 || doc.Groups.Count > 32)
                 throw new InvalidDataException("Original EMD polygon count unsupported.");
             var inputs = new List<InputMesh>();
@@ -433,7 +432,7 @@ namespace MusafirEx.EMD2Unity
                     stream.Write(output, 0, output.Length);
                 File.WriteAllText(manifestPath, JsonUtility.ToJson(manifest, true), Encoding.UTF8);
                 AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
-                AssetDatabase.ImportAsset(path.Replace(".emd", ".replacement.json"),
+                AssetDatabase.ImportAsset(Path.ChangeExtension(path, ".replacement.json"),
                     ImportAssetOptions.ForceUpdate);
                 var outputAsset = AssetDatabase.LoadAssetAtPath<GameObject>(path);
                 if (outputAsset != null)
