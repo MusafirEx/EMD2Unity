@@ -24,6 +24,53 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private int rigidUnskinnedBoneIndex = 0;
         [SerializeField] private bool forceRigidBone = false;
         [SerializeField] private bool allowBoneCollapse = false;
+        [SerializeField] private bool useExtendedReplacementRig = false;
+        [SerializeField] private bool useGroupedSourceMapping = false;
+        [SerializeField] private bool allowMergedDifferentTextures = false;
+        [SerializeField] private int[] sourceToPolygon = new int[128];
+
+        [Serializable]
+        private sealed class ReplacementMarker
+        {
+            public string sourceUnityGameObject;
+            public string generatedTemplatePath;
+            public string[] sourceBoneNames;
+            public string[] sourceMeshPaths;
+            public int sourceMeshCount;
+        }
+
+        private bool HasMatchingReplacementRig(EmdDocument document)
+        {
+            if (!useExtendedReplacementRig || document == null ||
+                originalEmd == null || fbxSource == null)
+                return false;
+            string templatePath = AssetDatabase.GetAssetPath(originalEmd);
+            string markerPath = Path.ChangeExtension(templatePath, ".replacement.json");
+            if (!File.Exists(markerPath)) return false;
+            try
+            {
+                ReplacementMarker marker =
+                    JsonUtility.FromJson<ReplacementMarker>(File.ReadAllText(markerPath));
+                if (marker == null || marker.generatedTemplatePath != templatePath ||
+                    marker.sourceUnityGameObject != fbxSource.name ||
+                    marker.sourceBoneNames == null || marker.sourceBoneNames.Length == 0)
+                    return false;
+                var names = new HashSet<string>(document.Bones.ConvertAll(b => b.Name),
+                    StringComparer.Ordinal);
+                if (!Array.TrueForAll(marker.sourceBoneNames, name => names.Contains(name)))
+                    return false;
+                List<InputSlot> current = GetInputSlots(fbxSource);
+                if (marker.sourceMeshPaths == null ||
+                    marker.sourceMeshCount != current.Count ||
+                    marker.sourceMeshPaths.Length != current.Count)
+                    return false;
+                for (int i = 0; i < current.Count; ++i)
+                    if (marker.sourceMeshPaths[i] != current[i].path)
+                        return false;
+                return true;
+            }
+            catch (Exception) { return false; }
+        }
         [SerializeField] private bool keepOriginalPackedAuxiliary = true;
         [SerializeField] private int[] mapping = new int[32];
         private Vector2 scrollPosition;
@@ -38,15 +85,73 @@ namespace MusafirEx.EMD2Unity
         private sealed class InputSlot
         {
             internal string label;
+            internal string path;
             internal Transform transform;
             internal Mesh mesh;
             internal int subMesh;
             internal SkinnedMeshRenderer skinned;
+            internal Renderer renderer;
         }
 
         [MenuItem("Tools/EMD2Unity/Direct FBX to Weapon EMD (Experimental)")]
         public static void Open() =>
             GetWindow<EmdDirectFbxExportWindow>("Direct FBX to EMD");
+
+        // Option B bridge: generated extended-bone EMD template and any
+        // Scene/GameObject source (not necessarily an FBX asset).
+        // Pre-map slot order without changing either input asset.
+        internal static void ConfigureReplacement(GameObject generatedTemplate, GameObject source)
+        {
+            var window = GetWindow<EmdDirectFbxExportWindow>("Direct FBX to EMD");
+            window.originalEmd = generatedTemplate;
+            window.fbxSource = source;
+            window.exportNativeFbxAttributes = true;
+            window.keepOriginalPackedAuxiliary = true;
+            window.forceRigidBone = false;
+            window.allowBoneCollapse = false;
+            window.useExtendedReplacementRig = true;
+            window.exportFbxUv0 = true;
+            window.exportFbxColors = false;
+            window.bakeRootTransform = false;
+            try
+            {
+                var originals = GetOriginalSlots(generatedTemplate);
+                var inputs = GetInputSlots(source);
+                if (inputs.Count > originals.Count)
+                {
+                    window.useGroupedSourceMapping = true;
+                    window.MapSourcesInOrder(originals, inputs);
+                }
+                else
+                {
+                    window.useGroupedSourceMapping = false;
+                    window.MapInOrder(originals, inputs);
+                }
+                EmdDocument rig = EmdParser.Parse(
+                    File.ReadAllBytes(AssetDatabase.GetAssetPath(generatedTemplate)));
+                var skinned = source.GetComponentInChildren<SkinnedMeshRenderer>(true);
+                if (skinned != null && skinned.rootBone != null)
+                {
+                    int target = rig.Bones.FindIndex(b => b.Name == skinned.rootBone.name);
+                    if (target >= 0) window.rigidUnskinnedBoneIndex = target;
+                }
+                window.report = "GameObject replacement mapping prepared: " + inputs.Count +
+                    " source meshes, " + originals.Count + " target polygon slots. " +
+                    (window.useGroupedSourceMapping
+                        ? "Assign ALL source meshes to a destination slot; unmapped " +
+                          "parts stop export. Merging different textures is refused " +
+                          "without an explicit unsafe test override. "
+                        : "Verify the mappings. ") +
+                    "Source DDS/EMAT textures are NOT embedded by this exporter.";
+            }
+            catch (Exception e)
+            {
+                window.report = "Replacement mapping unavailable: " + e.Message +
+                    ". Check original template import and manually assign meshes.";
+            }
+            window.Show();
+            window.Focus();
+        }
 
         private static int GetTrailingIndex(string name)
         {
@@ -118,10 +223,13 @@ namespace MusafirEx.EMD2Unity
                     {
                         label = HierarchyPath(input.transform, child) +
                             " [material slot " + submesh + "; mesh verts " + mesh.vertexCount + "]",
+                        path = HierarchyPath(input.transform, child),
                         transform = child,
                         mesh = mesh,
                         subMesh = submesh,
-                        skinned = skinned
+                        skinned = skinned,
+                        renderer = skinned != null ? (Renderer)skinned :
+                            child.GetComponent<MeshRenderer>()
                     });
                 }
             }
@@ -139,10 +247,12 @@ namespace MusafirEx.EMD2Unity
 
         private void OnGUI()
         {
-            EditorGUILayout.LabelField("Direct Blender / FBX → EMD Export", EditorStyles.boldLabel);
+            if (sourceToPolygon == null || sourceToPolygon.Length != 128)
+                sourceToPolygon = new int[128];
+            EditorGUILayout.LabelField("Direct GameObject / FBX → EMD Export", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
-                "ONE-STEP EXPORT: FBX geometry + UV0 → NEW weapon .emd. " +
-                "The ORIGINAL _Wxx.emd is required as the PS3 skeleton, material, " +
+                "ONE-STEP GEOMETRY EXPORT: Unity GameObject/FBX mesh + UV0 → NEW weapon .emd. " +
+                "An original or alpha extended-rig _Wxx.emd template supplies bone, material, " +
                 "opaque vertex-data and binary-layout template. " +
                 "No intermediate mesh assets, scene copies, distance analysis or " +
                 "vertex-distance acceptance tests are required. " +
@@ -152,7 +262,7 @@ namespace MusafirEx.EMD2Unity
             var selectedEmd = (GameObject)EditorGUILayout.ObjectField(
                 "Original Weapon .emd (template)", originalEmd, typeof(GameObject), false);
             var selectedFbx = (GameObject)EditorGUILayout.ObjectField(
-                "FBX or Blender Model", fbxSource, typeof(GameObject), true);
+                "Unity GameObject / FBX", fbxSource, typeof(GameObject), true);
             if (selectedEmd != originalEmd || selectedFbx != fbxSource)
             {
                 originalEmd = selectedEmd;
@@ -192,6 +302,33 @@ namespace MusafirEx.EMD2Unity
                 allowBoneCollapse = EditorGUILayout.ToggleLeft(
                     "Allow missing original bone influences (unsafe, may stretch mesh)",
                     allowBoneCollapse);
+                useGroupedSourceMapping = EditorGUILayout.ToggleLeft(
+                    "Map multiple source meshes into original EMD polygon slots",
+                    useGroupedSourceMapping);
+                if (useGroupedSourceMapping)
+                {
+                    allowMergedDifferentTextures = EditorGUILayout.ToggleLeft(
+                        "UNSAFE: allow different source textures to share ONE EMD slot",
+                        allowMergedDifferentTextures);
+                    EditorGUILayout.HelpBox(
+                        "Each source must be assigned to exactly one original polygon. " +
+                        "Multiple sources in one slot have their geometry merged, " +
+                        "but EMD supports only ONE material slot/texture mapping there. " +
+                        "Use a compatible texture atlas to preserve different textures; " +
+                        "the unsafe override is for geometry-only game testing.",
+                        MessageType.Warning);
+                }
+                useExtendedReplacementRig = EditorGUILayout.ToggleLeft(
+                    "Use generated extended-rig GameObject replacement manifest",
+                    useExtendedReplacementRig);
+                if (useExtendedReplacementRig)
+                    EditorGUILayout.HelpBox(
+                        "Requires the exact generated *_W00.emd template and its " +
+                        "*.replacement.json for the selected GameObject. " +
+                        "Old mesh bone influences may be replaced intentionally; " +
+                        "actual source WP bones must still match the extended EMD " +
+                        "skeleton. Game loading and animation remain unverified.",
+                        MessageType.Warning);
             }
             EditorGUILayout.HelpBox(
                 "A single FBX mesh with multiple material submeshes is treated as " +
@@ -225,21 +362,52 @@ namespace MusafirEx.EMD2Unity
                     if (inputs.Count == 0)
                         throw new InvalidDataException(
                             "FBX contains no triangle meshes (MeshFilter/SkinnedMeshRenderer).");
-                    var labels = new string[inputs.Count + 1];
-                    labels[0] = "(Keep original EMD geometry)";
-                    for (int i = 0; i < inputs.Count; i++)
-                        labels[i + 1] = inputs[i].label;
-                    EditorGUILayout.LabelField("EMD polygon / material slot ← FBX geometry",
-                        EditorStyles.boldLabel);
-                    for (int i = 0; i < originals.Count; i++)
-                        mapping[i] = EditorGUILayout.Popup(
-                            originals[i].name, Mathf.Clamp(mapping[i], 0, inputs.Count), labels);
-                    using (new EditorGUILayout.HorizontalScope())
+                    if (useGroupedSourceMapping)
                     {
-                        if (GUILayout.Button("Auto-map meshes"))
-                            AutoMap(originals, inputs);
-                        if (GUILayout.Button("Map in order"))
-                            MapInOrder(originals, inputs);
+                        var slots = new string[originals.Count + 1];
+                        slots[0] = "(UNASSIGNED — blocks export)";
+                        for (int i = 0; i < originals.Count; ++i)
+                            slots[i + 1] = "Slot " + i + " — " + originals[i].name;
+                        EditorGUILayout.LabelField("Every source mesh → original EMD polygon",
+                            EditorStyles.boldLabel);
+                        int unmapped = 0;
+                        for (int i = 0; i < inputs.Count; ++i)
+                        {
+                            if (i >= sourceToPolygon.Length)
+                                throw new InvalidDataException(
+                                    "More than " + sourceToPolygon.Length + " input submeshes.");
+                            sourceToPolygon[i] = EditorGUILayout.Popup(
+                                inputs[i].label,
+                                Mathf.Clamp(sourceToPolygon[i], 0, originals.Count),
+                                slots);
+                            if (sourceToPolygon[i] == 0) unmapped++;
+                        }
+                        if (unmapped > 0)
+                            EditorGUILayout.HelpBox(unmapped +
+                                " source mesh(es) still UNASSIGNED. Export will refuse " +
+                                "until every source has an explicit destination.",
+                                MessageType.Warning);
+                        if (GUILayout.Button("Initialize first slots in order (others UNASSIGNED)"))
+                            MapSourcesInOrder(originals, inputs);
+                    }
+                    else
+                    {
+                        var labels = new string[inputs.Count + 1];
+                        labels[0] = "(Keep original EMD geometry)";
+                        for (int i = 0; i < inputs.Count; i++)
+                            labels[i + 1] = inputs[i].label;
+                        EditorGUILayout.LabelField("EMD polygon / material slot ← source geometry",
+                            EditorStyles.boldLabel);
+                        for (int i = 0; i < originals.Count; i++)
+                            mapping[i] = EditorGUILayout.Popup(
+                                originals[i].name, Mathf.Clamp(mapping[i], 0, inputs.Count), labels);
+                        using (new EditorGUILayout.HorizontalScope())
+                        {
+                            if (GUILayout.Button("Auto-map meshes"))
+                                AutoMap(originals, inputs);
+                            if (GUILayout.Button("Map in order"))
+                                MapInOrder(originals, inputs);
+                        }
                     }
                     EditorGUILayout.Space();
                     if (GUILayout.Button("EXPORT DIRECT FBX → NEW .EMD", GUILayout.Height(34)))
@@ -263,18 +431,40 @@ namespace MusafirEx.EMD2Unity
         private void ResetMapping()
         {
             mapping = new int[32];
+            sourceToPolygon = new int[128];
             if (originalEmd == null || fbxSource == null || !IsOriginalWeapon(originalEmd))
                 return;
             try
             {
                 var slots = GetOriginalSlots(originalEmd);
                 var inputs = GetInputSlots(fbxSource);
-                AutoMap(slots, inputs);
+                if (inputs.Count > slots.Count && useExtendedReplacementRig)
+                {
+                    useGroupedSourceMapping = true;
+                    MapSourcesInOrder(slots, inputs);
+                }
+                else
+                {
+                    useGroupedSourceMapping = false;
+                    AutoMap(slots, inputs);
+                }
             }
             catch (Exception e)
             {
                 report = "Automatic mapping unavailable: " + e.Message;
             }
+        }
+
+        private void MapSourcesInOrder(List<OriginalSlot> originals, List<InputSlot> inputs)
+        {
+            sourceToPolygon = new int[128];
+            for (int i = 0; i < inputs.Count && i < originals.Count; ++i)
+                sourceToPolygon[i] = i + 1;
+            report = "Source-to-EMD mapping initialized. " +
+                Math.Min(originals.Count, inputs.Count) + " mapped in order, " +
+                Math.Max(0, inputs.Count - originals.Count) +
+                " sources remain UNASSIGNED and must be mapped manually. " +
+                "No geometry will be dropped silently.";
         }
 
         private void MapInOrder(List<OriginalSlot> original, List<InputSlot> inputs)
@@ -556,6 +746,113 @@ namespace MusafirEx.EMD2Unity
             return result;
         }
 
+        // A source GameObject may have many Renderers but the original EMD
+        // can have fewer polygon/material slots. Distinct textures cannot be
+        // preserved in a single EMD material slot without an atlas or new
+        // material-table/EMAT writer; default to an explicit refusal.
+        private static string SourceMaterialIdentity(InputSlot slot)
+        {
+            Renderer renderer = slot.renderer;
+            if (renderer == null)
+                return "(none)";
+            Material[] mats = renderer.sharedMaterials;
+            Material material = mats != null && slot.subMesh < mats.Length ?
+                mats[slot.subMesh] : null;
+            if (material == null) return "(none)";
+            Texture texture = null;
+            if (material.HasProperty("_MainTex"))
+                texture = material.GetTexture("_MainTex");
+            if (texture == null && material.HasProperty("_BaseMap"))
+                texture = material.GetTexture("_BaseMap");
+            if (texture == null && material.HasProperty("_BaseColorMap"))
+                texture = material.GetTexture("_BaseColorMap");
+            // Instance IDs are used only to compare within the current run.
+            // Identical texture names are not evidence of identical content.
+            return texture != null
+                ? "texture:" + texture.GetInstanceID() + " (" + texture.name + ")"
+                : "material:" + material.GetInstanceID() + " (" + material.name + ")";
+        }
+
+        private static Mesh MergeMappedMeshes(
+            List<Mesh> pieces, string meshName,
+            bool includeUV, bool includeColors, bool includeWeights)
+        {
+            if (pieces == null || pieces.Count == 0)
+                throw new InvalidDataException("No source meshes to merge.");
+            int count = 0, indices = 0;
+            foreach (Mesh p in pieces)
+            {
+                count = checked(count + p.vertexCount);
+                indices = checked(indices + p.triangles.Length);
+            }
+            if (count < 3 || count > 5000 || indices < 3 || indices > 32000 ||
+                count > ushort.MaxValue || indices % 3 != 0)
+                throw new InvalidDataException(meshName + ": combined source geometry (" +
+                    count + " vertices, " + indices + " indices) exceeds current " +
+                    "EMD per-polygon limits. Use fewer groups or implement a real " +
+                    "new-polygon writer instead of dropping geometry.");
+
+            var vertices = new Vector3[count];
+            var triangles = new int[indices];
+            var uvs = includeUV ? new Vector2[count] : null;
+            var colors = includeColors ? new Color32[count] : null;
+            var normals = includeWeights ? new Vector3[count] : null;
+            var weights = includeWeights ? new BoneWeight[count] : null;
+            int vertexOffset = 0, indexOffset = 0;
+            foreach (Mesh p in pieces)
+            {
+                Vector3[] vv = p.vertices;
+                int[] ii = p.triangles;
+                Array.Copy(vv, 0, vertices, vertexOffset, vv.Length);
+                if (includeUV)
+                {
+                    Vector2[] uv = p.uv;
+                    if (uv.Length != vv.Length)
+                        throw new InvalidDataException(meshName + ": source missing UV0.");
+                    Array.Copy(uv, 0, uvs, vertexOffset, uv.Length);
+                }
+                if (includeColors)
+                {
+                    Color32[] color = p.colors32;
+                    if (color.Length != vv.Length)
+                        throw new InvalidDataException(meshName + ": source missing vertex colors.");
+                    Array.Copy(color, 0, colors, vertexOffset, color.Length);
+                }
+                if (includeWeights)
+                {
+                    Vector3[] normal = p.normals;
+                    BoneWeight[] bone = p.boneWeights;
+                    if (normal.Length != vv.Length || bone.Length != vv.Length)
+                        throw new InvalidDataException(meshName +
+                            ": source normals/skin weights incomplete.");
+                    Array.Copy(normal, 0, normals, vertexOffset, normal.Length);
+                    Array.Copy(bone, 0, weights, vertexOffset, bone.Length);
+                }
+                for (int i = 0; i < ii.Length; ++i)
+                {
+                    if (ii[i] < 0 || ii[i] >= vv.Length)
+                        throw new InvalidDataException(meshName +
+                            ": invalid source triangle index.");
+                    triangles[indexOffset + i] = checked(vertexOffset + ii[i]);
+                }
+                vertexOffset += vv.Length;
+                indexOffset += ii.Length;
+            }
+            var combined = new Mesh { name = meshName, indexFormat = IndexFormat.UInt16 };
+            combined.vertices = vertices;
+            combined.triangles = triangles;
+            if (includeUV) combined.uv = uvs;
+            if (includeColors) combined.colors32 = colors;
+            if (includeWeights)
+            {
+                combined.normals = normals;
+                combined.boneWeights = weights;
+            }
+            else combined.RecalculateNormals();
+            combined.RecalculateBounds();
+            return combined;
+        }
+
         private void ExportNow(List<OriginalSlot> original, List<InputSlot> inputs)
         {
             GameObject temporary = null;
@@ -565,37 +862,135 @@ namespace MusafirEx.EMD2Unity
                 EmdDocument emd = exportNativeFbxAttributes ?
                     EmdParser.Parse(File.ReadAllBytes(
                         AssetDatabase.GetAssetPath(originalEmd))) : null;
+                bool fullReplacement = HasMatchingReplacementRig(emd);
+                if (useExtendedReplacementRig && !fullReplacement)
+                    throw new InvalidDataException(
+                        "Extended-rig export requires the exact EMD template and companion " +
+                        ".replacement.json generated from this GameObject.");
                 var usedInputs = new HashSet<int>();
                 var replacement = new HashSet<string>();
                 var summary = new StringBuilder();
-                summary.AppendLine("EMD2Unity DIRECT FBX → EMD");
+                summary.AppendLine("EMD2Unity DIRECT GameObject/FBX -> EMD");
                 summary.AppendLine("EMD template: " + AssetDatabase.GetAssetPath(originalEmd));
-                summary.AppendLine("FBX root: " + fbxSource.name);
-                summary.AppendLine("Mode: direct; no persisted scene or mesh copy.");
-                for (int i = 0; i < original.Count; i++)
+                summary.AppendLine("Source GameObject: " + fbxSource.name);
+                summary.AppendLine("Source meshes: " + inputs.Count +
+                    "; target EMD polygons: " + original.Count);
+                summary.AppendLine("Mode: direct; no persisted intermediate Scene/mesh assets.");
+                var assignedParts = new List<InputSlot>[original.Count];
+                for (int i = 0; i < assignedParts.Length; ++i)
+                    assignedParts[i] = new List<InputSlot>();
+
+                if (useGroupedSourceMapping)
                 {
-                    int assigned = mapping[i];
-                    if (assigned == 0) continue;
-                    if (assigned < 1 || assigned > inputs.Count)
-                        throw new InvalidDataException(original[i].name + ": invalid mapping index.");
-                    if (!usedInputs.Add(assigned))
+                    if (!exportNativeFbxAttributes || emd == null)
                         throw new InvalidDataException(
-                            "Same FBX submesh mapped twice. Create unique FBX mesh slots first.");
+                            "Grouped weapon replacement requires native bone/skin export; " +
+                            "turn on Encode FBX normals and skin weights DIRECTLY.");
+                    if (inputs.Count > sourceToPolygon.Length)
+                        throw new InvalidDataException("Too many input slots for the " +
+                            sourceToPolygon.Length + "-slot mapping buffer.");
+                    for (int i = 0; i < inputs.Count; ++i)
+                    {
+                        int dest = sourceToPolygon[i];
+                        if (dest < 1 || dest > original.Count)
+                            throw new InvalidDataException(
+                                "Source mesh #" + i + " '" + inputs[i].label +
+                                "' is UNASSIGNED. Explicitly choose one of the original " +
+                                "EMD polygon slots for EVERY mesh. Nothing is dropped.");
+                        assignedParts[dest - 1].Add(inputs[i]);
+                        usedInputs.Add(i);
+                    }
+                    if (fullReplacement)
+                    {
+                        for (int i = 0; i < assignedParts.Length; ++i)
+                            if (assignedParts[i].Count == 0)
+                                throw new InvalidDataException(
+                                    "Original EMD polygon " + original[i].name +
+                                    " has no replacement source mesh. Full replacement " +
+                                    "requires all EMD slots to be assigned.");
+                    }
+
+                    // Original EMD materials may be shared by MULTIPLE polygon
+                    // slots. Check by actual destination MaterialIndex, not
+                    // polygon index, to catch unrepresentable source textures.
+                    var chosenTextures = new Dictionary<int, string>();
+                    for (int i = 0; i < original.Count; ++i)
+                    {
+                        int gameMaterialIndex = emd.Groups[i].MaterialIndex;
+                        foreach (InputSlot part in assignedParts[i])
+                        {
+                            string id = SourceMaterialIdentity(part);
+                            string previous;
+                            if (chosenTextures.TryGetValue(gameMaterialIndex, out previous) &&
+                                !string.Equals(previous, id, StringComparison.Ordinal))
+                            {
+                                string warning =
+                                    "EMD material #" + gameMaterialIndex +
+                                    " is shared by sources with DIFFERENT texture/material identities: '" +
+                                    previous + "' versus '" + id + "' (" + part.label + "). " +
+                                    "Only one game texture can be referenced by this original " +
+                                    "material slot; make a shared atlas with corrected UVs " +
+                                    "or implement new EMD material/EMAT slots.";
+                                if (!allowMergedDifferentTextures)
+                                    throw new InvalidDataException(warning +
+                                        " Set UNSAFE texture merge only for geometry-only testing.");
+                                summary.AppendLine("UNSAFE TEXTURE LOSS: " + warning);
+                            }
+                            else chosenTextures[gameMaterialIndex] = id;
+                        }
+                    }
+                    summary.AppendLine("Grouped mapping: every input mesh assigned exactly once.");
+                }
+                else
+                {
+                    for (int i = 0; i < original.Count; ++i)
+                    {
+                        int assigned = mapping[i];
+                        if (assigned == 0) continue;
+                        if (assigned < 1 || assigned > inputs.Count)
+                            throw new InvalidDataException(original[i].name +
+                                ": invalid mapping index.");
+                        if (!usedInputs.Add(assigned - 1))
+                            throw new InvalidDataException(
+                                "Same source submesh mapped twice. Use grouped mapping " +
+                                "if multiple source meshes must share one EMD polygon.");
+                        assignedParts[i].Add(inputs[assigned - 1]);
+                    }
+                    if (fullReplacement && usedInputs.Count != inputs.Count)
+                        throw new InvalidDataException(
+                            "Extended-rig source has " + inputs.Count + " meshes but only " +
+                            usedInputs.Count + " mapped. Enable grouped mapping and " +
+                            "explicitly assign EVERY source mesh; do not silently omit any.");
                 }
                 if (usedInputs.Count == 0)
-                    throw new InvalidDataException("Map at least one FBX mesh to an EMD polygon.");
+                    throw new InvalidDataException("Map at least one source mesh to an EMD polygon.");
 
-                // Build all requested meshes before creating temporary GameObjects.
+                // Each source is transformed, compacted and mapped to the
+                // extended EMD skeleton independently before concatenation.
+                // The resulting combined BoneWeights use EMD-global bone IDs,
+                // so local source skeleton index tables never collide.
                 var sourceMeshes = new Mesh[original.Count];
-                for (int i = 0; i < original.Count; i++)
+                for (int i = 0; i < original.Count; ++i)
                 {
-                    int assigned = mapping[i];
-                    if (assigned == 0) continue;
-                    InputSlot input = inputs[assigned - 1];
-                    Mesh created = BuildMappedMesh(
-                        input, fbxSource, bakeRootTransform, exportFbxUv0,
-                        exportFbxColors, exportNativeFbxAttributes,
-                        emd, rigidUnskinnedBoneIndex, forceRigidBone);
+                    if (assignedParts[i].Count == 0) continue;
+                    var pieces = new List<Mesh>();
+                    foreach (InputSlot input in assignedParts[i])
+                    {
+                        Mesh piece = BuildMappedMesh(
+                            input, fbxSource, bakeRootTransform, exportFbxUv0,
+                            exportFbxColors, exportNativeFbxAttributes,
+                            emd, rigidUnskinnedBoneIndex, forceRigidBone);
+                        newMeshes.Add(piece);
+                        pieces.Add(piece);
+                        summary.AppendLine("  " + original[i].name + " <= " + input.label +
+                            ": " + piece.vertexCount + " vertices, " +
+                            piece.triangles.Length / 3 + " triangles; material=" +
+                            SourceMaterialIdentity(input));
+                    }
+                    Mesh created = pieces.Count == 1 ? pieces[0] :
+                        MergeMappedMeshes(pieces, original[i].name + "_GameObjectMerged",
+                            exportFbxUv0, exportFbxColors, exportNativeFbxAttributes);
+                    if (pieces.Count > 1) newMeshes.Add(created);
                     if (exportNativeFbxAttributes)
                     {
                         if (emd == null || i >= emd.Groups.Count)
@@ -608,24 +1003,25 @@ namespace MusafirEx.EMD2Unity
                         {
                             string warning = original[i].name +
                                 ": original game polygon uses bones [" +
-                                BoneNames(emd, originalBones) + "] but new FBX uses [" +
-                                BoneNames(emd, exportedBones) + "]. Missing bone influences [" +
+                                BoneNames(emd, originalBones) + "] but replacement uses [" +
+                                BoneNames(emd, exportedBones) + "]. Missing old influences [" +
                                 BoneNames(emd, missing) + "].";
-                            if (!allowBoneCollapse)
+                            if (!fullReplacement && !allowBoneCollapse)
                                 throw new InvalidDataException(warning +
                                     " This can stretch or detach geometry in game. " +
-                                    "Skin the FBX mesh to the matching source EMD bones in Blender, " +
-                                    "or explicitly enable Allow missing original bone influences " +
-                                    "(unsafe).");
-                            summary.AppendLine("UNSAFE BONE COLLAPSE: " + warning);
+                                    "Skin source meshes to matching EMD bones, or explicitly " +
+                                    "enable the unsafe old-influence collapse override.");
+                            summary.AppendLine((fullReplacement
+                                ? "EXTENDED RIG (intentional original influence replacement): "
+                                : "UNSAFE BONE COLLAPSE: ") + warning);
                         }
                     }
-                    newMeshes.Add(created);
                     sourceMeshes[i] = created;
                     replacement.Add(original[i].name);
-                    summary.AppendLine(original[i].name + " <= " + input.label +
-                        ": " + created.vertexCount + " vertices; " +
-                        created.triangles.Length / 3 + " triangles");
+                    summary.AppendLine("COMBINED " + original[i].name +
+                        ": " + assignedParts[i].Count + " source part(s), " +
+                        created.vertexCount + " vertices, " +
+                        created.triangles.Length / 3 + " triangles.");
                 }
 
                 temporary = Instantiate(originalEmd);
