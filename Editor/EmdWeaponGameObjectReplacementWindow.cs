@@ -132,7 +132,12 @@ namespace MusafirEx.EMD2Unity
             for (int col = 0; col < 4; col++)
                 for (int row = 0; row < 4; row++)
                 {
-                    int bits = Be32(bytes, offset + (col * 4 + row) * 4);
+                    int at = offset + (col * 4 + row) * 4;
+                    if (at < 0 || at > bytes.Length - 4)
+                        throw new InvalidDataException("Bone matrix outside EMD.");
+                    uint bits = ((uint)bytes[at] << 24) |
+                        ((uint)bytes[at + 1] << 16) |
+                        ((uint)bytes[at + 2] << 8) | bytes[at + 3];
                     matrix[row, col] = BitConverter.ToSingle(BitConverter.GetBytes(bits), 0);
                 }
             return matrix;
