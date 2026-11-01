@@ -48,6 +48,37 @@ namespace MusafirEx.EMD2Unity
         public static void Open() =>
             GetWindow<EmdDirectFbxExportWindow>("Direct FBX to EMD");
 
+        // Option B bridge: generated extended-bone EMD template and any
+        // Scene/GameObject source (not necessarily an FBX asset).
+        // Pre-map slot order without changing either input asset.
+        internal static void ConfigureReplacement(GameObject generatedTemplate, GameObject source)
+        {
+            var window = GetWindow<EmdDirectFbxExportWindow>("Direct FBX to EMD");
+            window.originalEmd = generatedTemplate;
+            window.fbxSource = source;
+            window.exportNativeFbxAttributes = true;
+            window.keepOriginalPackedAuxiliary = true;
+            window.forceRigidBone = false;
+            window.allowBoneCollapse = false;
+            window.exportFbxUv0 = true;
+            window.exportFbxColors = false;
+            window.bakeRootTransform = false;
+            try
+            {
+                window.MapInOrder(GetOriginalSlots(generatedTemplate), GetInputSlots(source));
+                window.report = "GameObject replacement mapping prepared. Confirm all mesh slots and " +
+                    "bone names before exporting. Source textures are NOT embedded in the EMD. " +
+                    "This path is experimental and requires in-game verification.";
+            }
+            catch (Exception e)
+            {
+                window.report = "Replacement mapping unavailable: " + e.Message +
+                    ". Check original template import and manually assign meshes.";
+            }
+            window.Show();
+            window.Focus();
+        }
+
         private static int GetTrailingIndex(string name)
         {
             int at = name.LastIndexOf('_');
