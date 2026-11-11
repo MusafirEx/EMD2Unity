@@ -16,7 +16,7 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private bool deltaRotationFirst;
         [SerializeField] private bool allowPartialPreview;
         [SerializeField] private bool experimentalScale022;
-        [SerializeField] private bool loop = true;
+        [SerializeField] private bool loop = false;
         [SerializeField] private float speed = 1f;
         [SerializeField] private float time;
 
@@ -47,9 +47,23 @@ namespace MusafirEx.EMD2Unity
             if (model != null) window.emd = model;
             if (selectedId >= 0) window.motionId = selectedId;
             window.deltaRotationFirst = first;
+            window.SyncLoopFromImporter();
             window.ResetPreview();
             window.Show();
             window.Focus();
+        }
+
+        private void SyncLoopFromImporter()
+        {
+            if (pemt == null || motionId < 0)
+            {
+                loop = false;
+                return;
+            }
+            PemtLoopSettingsUtility.GetForSource(
+                AssetDatabase.GetAssetPath(pemt), motionId,
+                out bool configuredLoop, out bool configuredPose);
+            loop = configuredLoop;
         }
 
         private void OnEnable()
@@ -147,6 +161,9 @@ namespace MusafirEx.EMD2Unity
                     pemt, selected, emd, deltaRotationFirst,
                     allowPartialPreview, skipped,
                     experimentalScale022, decodedExperimental);
+                PemtLoopSettingsUtility.ApplyFromSource(
+                    AssetDatabase.GetAssetPath(pemt), selected.motionId, clip);
+                SyncLoopFromImporter();
                 partialPreviewLoaded = skipped.Count > 0;
                 experimentalScaleLoaded = decodedExperimental.Count > 0;
                 if (experimentalScaleLoaded)
@@ -206,14 +223,14 @@ namespace MusafirEx.EMD2Unity
             EditorGUILayout.LabelField("PEMT Animation Preview", EditorStyles.boldLabel);
             PemtMotionLibrary next = (PemtMotionLibrary)EditorGUILayout.ObjectField(
                 "PEMT Container", pemt, typeof(PemtMotionLibrary), false);
-            if (next != pemt) { pemt = next; emd = null; motionId = -1; ResetPreview(); }
+            if (next != pemt) { pemt = next; emd = null; motionId = -1; SyncLoopFromImporter(); ResetPreview(); }
             if (GUILayout.Button("Use PEMT Selected in Project"))
             {
                 string selectedPath = AssetDatabase.GetAssetPath(Selection.activeObject);
                 PemtMotionLibrary projectPemt = AssetDatabase.LoadAssetAtPath<PemtMotionLibrary>(selectedPath);
                 if (projectPemt != null && projectPemt != pemt)
                 {
-                    pemt = projectPemt; emd = null; motionId = -1; ResetPreview();
+                    pemt = projectPemt; emd = null; motionId = -1; SyncLoopFromImporter(); ResetPreview();
                 }
             }
             if (pemt == null)
@@ -247,11 +264,13 @@ namespace MusafirEx.EMD2Unity
                 current = motions.FindIndex(m => m.motionId != 0 && m.tracks.Count > 0);
                 if (current < 0) current = 0;
                 motionId = motions[current].motionId;
+                SyncLoopFromImporter();
             }
             int chosenMotion = EditorGUILayout.Popup("Motion ID", current, names);
             if (chosenMotion != current && chosenMotion >= 0 && chosenMotion < motions.Count)
             {
                 motionId = motions[chosenMotion].motionId;
+                SyncLoopFromImporter();
                 ResetPreview();
             }
 
@@ -351,7 +370,8 @@ namespace MusafirEx.EMD2Unity
                 }
                 EditorGUILayout.LabelField("Time", time.ToString("F3") + " / " +
                     duration.ToString("F3") + " seconds");
-                loop = EditorGUILayout.Toggle("Loop", loop);
+                loop = EditorGUILayout.Toggle(new GUIContent("Loop",
+                    "Initialized from this PEMT Motion ID's import setting; preview-only changes are not saved."), loop);
                 speed = EditorGUILayout.Slider("Speed", speed, 0.1f, 2f);
             }
         }
