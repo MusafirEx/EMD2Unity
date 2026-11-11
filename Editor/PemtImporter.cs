@@ -15,7 +15,7 @@ using UnityEngine;
 
 namespace MusafirEx.EMD2Unity
 {
-    [ScriptedImporter(6, "pemt")]
+    [ScriptedImporter(7, "pemt")]
     public sealed class PemtImporter : ScriptedImporter
     {
         [Header("Embedded Animation Clips")]
@@ -32,6 +32,24 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private bool importExperimentalScale022 = true;
         [Tooltip("Off by default: skip unknown track markers and create visibly incomplete clips. Any malformed supported track still fails.")]
         [SerializeField] private bool allowPartialAnimationClips = false;
+        [Tooltip("Fallback playback mode for Motion IDs without an explicit override. Defaults to Once to avoid looping attacks, hits, and deaths.")]
+        [SerializeField] private bool defaultLoopTime = false;
+        [Tooltip("Per-Motion-ID loop overrides. Edit using the Motion Loop Settings table in this PEMT Inspector.")]
+        [SerializeField] private List<PemtMotionLoopSetting> motionLoopOverrides = new List<PemtMotionLoopSetting>();
+
+        internal void GetLoopSettings(int motionId, out bool loopTime, out bool loopPose)
+        {
+            loopTime = defaultLoopTime;
+            loopPose = false;
+            if (motionLoopOverrides == null) return;
+            foreach (PemtMotionLoopSetting item in motionLoopOverrides)
+            {
+                if (item == null || item.motionId != motionId) continue;
+                loopTime = item.loopTime;
+                loopPose = item.loopTime && item.loopPose;
+                return;
+            }
+        }
 
         private static HashSet<int> ReferencedBoneIds(PemtMotionLibrary library)
         {
@@ -214,6 +232,8 @@ namespace MusafirEx.EMD2Unity
                             allowPartialAnimationClips, skippedTracks,
                             importExperimentalScale022, scaleTracks);
                     clip.name = baseName + "_Motion_" + motion.motionId.ToString("X3");
+                    GetLoopSettings(motion.motionId, out bool loopTime, out bool loopPose);
+                    PemtLoopSettingsUtility.Apply(clip, loopTime, loopPose);
                     ctx.AddObjectToAsset("motion_" + motion.motionId.ToString("X4"), clip);
                     library.embeddedClipCount++;
                     if (unbound) library.embeddedUnboundCount++;
@@ -290,6 +310,39 @@ namespace MusafirEx.EMD2Unity
                         "See Console and retry with a matching EMD Animation Rig.");
                 }
             }
+        }
+    }
+
+    internal static class PemtLoopSettingsUtility
+    {
+        // The imported clip metadata is editor-only; no source PEMT bytes or keyframe
+        // curves are altered. Loop Pose is meaningful only when Loop Time is enabled.
+        internal static void Apply(AnimationClip clip, bool loopTime, bool loopPose)
+        {
+            if (clip == null) throw new ArgumentNullException("clip");
+            AnimationClipSettings settings = AnimationUtility.GetAnimationClipSettings(clip);
+            settings.loopTime = loopTime;
+            settings.loopBlend = loopTime && loopPose;
+            AnimationUtility.SetAnimationClipSettings(clip, settings);
+        }
+
+        internal static void GetForSource(string sourcePath, int motionId,
+            out bool loopTime, out bool loopPose)
+        {
+            PemtImporter importer = AssetImporter.GetAtPath(sourcePath) as PemtImporter;
+            if (importer == null)
+            {
+                loopTime = false;
+                loopPose = false;
+                return;
+            }
+            importer.GetLoopSettings(motionId, out loopTime, out loopPose);
+        }
+
+        internal static void ApplyFromSource(string sourcePath, int motionId, AnimationClip clip)
+        {
+            GetForSource(sourcePath, motionId, out bool loopTime, out bool loopPose);
+            Apply(clip, loopTime, loopPose);
         }
     }
 
