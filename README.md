@@ -4,6 +4,16 @@ Native **Unity 2022.3+** Editor package for experimenting with PS3 Kamen Rider *
 
 > **Experimental:** The Editor assembly was previously compiled in Unity 2022.3.62f3. Version 0.4.3 adds an evidence-only CCM-to-PEMT Motion ID cross-reference panel. Version 0.4.2 added a read-only CCM Inspector/Browser for 0x80-byte combo records. Version 0.4.1 added a read-only SEQ Inspector/Browser for big-endian header words, referenced resource strings and raw byte-marker counts (without guessing VM opcodes). Version 0.4.0 added in-Editor PEMT Animation Preview with Play/Pause/Stop, scrubbing, orbit and zoom. Version 0.3.7 adds optional partial recovery of supported polygon records and detailed vertex buffer diagnostics for stage EMDs. Version 0.3.6 supported verifiable nonstandard triangle counts or trailing padding in EMD stage index buffers. Version 0.3.5 added 28-byte UV/color-record support for stage EMD models and flags imported EMD assets containing no renderable geometry. Version 0.3.4 adds batch export of all PEMT motions with transform keys to separate .anim files. The decoder is the same as the working single-motion export. Version 0.3.3 made PEMT Inspector controls interactive when selecting a .pemt source file. The previous UI was attached to the generated ScriptableObject, which Unity displays read-only. A separate PEMT Motion Browser window is also available. The EMD model importer remains unchanged from v0.1.5. Unity rendering, rig and shader equivalence remain pending. It may require fixes for particular models.
 
+### PEMT as a BRRES-style AnimationClip container (v0.6.0)
+
+A single `.pemt` source now embeds **many Unity AnimationClip sub-assets**, one per successfully decoded numeric Motion ID. Expand `0000.pemt` in the Project window to select clips such as `0000_Motion_100` for Animator, Timeline, and Animation workflows. The `.pemt` remains the container: the original binary is not overwritten and the main `PemtMotionLibrary` metadata asset is preserved.
+
+**Configure:** Select the `.pemt` source and use its Inspector's **Import Animation Clips**, **Animation Rig (EMD)**, and **Auto-detect Nearby EMD** fields. Automatic matching considers `<character>/model/*.emd` siblings of `<character>/motion/*.pemt`, scores numeric bone IDs, and rejects ambiguous ties. Assign the intended imported EMD model if no unique matching skeleton is found, then click **Apply**. Clips use the EMD's rest pose, bone hierarchy and coordinate settings; no arbitrary bone path is invented.
+
+**Decoder safety:** Position and Rotation use the existing shared preview/export decoder. **Experimental Scale 0x22** is enabled by default for embedded clips based on previous preview testing, but is still explicitly warned as an unconfirmed scale-multiplier hypothesis. **Allow Partial Clips** is OFF by default: unsupported tracks cause that Motion ID to fail instead of silently dropping channels. Motion IDs fail independently; valid clips remain accessible. The Inspector shows embedded, failed, skipped, partial and experimental-scale counts; its motion panel can select an embedded clip directly. Previously exported standalone `.anim` files remain unchanged.
+
+This feature is independent of Bress2Unity, but follows its importer-owned sub-asset workflow. A real Unity 2022.3 compile and animation playback test are required before treating the clips as production-validated.
+
 ## Install directly from this GitHub repository
 
 Unity → **Window → Package Manager → + → Add package from git URL...**
@@ -19,7 +29,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.4.9.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.6.0.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
