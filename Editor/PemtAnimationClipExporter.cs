@@ -140,15 +140,36 @@ namespace MusafirEx.EMD2Unity
             bool allowPartialPreview = false, List<string> skippedTracks = null,
             bool experimentalScalePreview = false, List<string> experimentalTracks = null)
         {
-            if(lib==null||motion==null||model==null)throw new ArgumentException("Select a PEMT motion and an EMD model.");
-            // The Inspector may hold either an EMD Project asset or a scene prefab
-            // instance. Resolve a scene instance back to its imported EMD source.
-            model = ResolveSourceEmdModel(model);
-            string modelPath=AssetDatabase.GetAssetPath(model);
-            string sourcePath=AssetDatabase.GetAssetPath(lib);
-            if(string.IsNullOrEmpty(sourcePath)||!sourcePath.EndsWith(".pemt",StringComparison.OrdinalIgnoreCase))
+            if (lib == null) throw new ArgumentNullException("lib");
+            string sourcePath = AssetDatabase.GetAssetPath(lib);
+            if (string.IsNullOrEmpty(sourcePath) ||
+                !sourcePath.EndsWith(".pemt", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("The source must be an imported .pemt container.");
-            var emdImporter=AssetImporter.GetAtPath(modelPath) as EmdImporter;
+            return CreateFromSourceBytes(sourcePath, File.ReadAllBytes(sourcePath),
+                motion, model, rotateFirst, allowPartialPreview, skippedTracks,
+                experimentalScalePreview, experimentalTracks);
+        }
+
+        // Shares one decoder between standalone Preview/Export and imported PEMT
+        // AnimationClip sub-assets. During OnImportAsset, the PemtMotionLibrary
+        // has not been registered in AssetDatabase, so its path cannot be used.
+        // The importer supplies the verified source path and cached source bytes.
+        internal static AnimationClip CreateFromSourceBytes(string sourcePath,
+            byte[] sourceBytes, PemtMotionMetadata motion, GameObject model,
+            bool rotateFirst, bool allowPartialPreview = false,
+            List<string> skippedTracks = null,
+            bool experimentalScalePreview = false,
+            List<string> experimentalTracks = null)
+        {
+            if (motion == null || model == null || sourceBytes == null)
+                throw new ArgumentException("PEMT motion, EMD model and source bytes are required.");
+            if (string.IsNullOrEmpty(sourcePath) ||
+                !sourcePath.EndsWith(".pemt", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Invalid PEMT source path.");
+            // Resolve any scene selection to the canonical EMD importer's rest pose.
+            model = ResolveSourceEmdModel(model);
+            string modelPath = AssetDatabase.GetAssetPath(model);
+            var emdImporter = AssetImporter.GetAtPath(modelPath) as EmdImporter;
             if(emdImporter==null)throw new InvalidDataException("Selected model is not imported by EMD2Unity.");
             // Use EMD's effective basis; the serialized swapYAndZ field alone
             // misses Rotate -90 X, Mirror X, and STG preset overrides.
@@ -159,7 +180,7 @@ namespace MusafirEx.EMD2Unity
             MapBones(armature,"Armature",paths,bones);
             if(paths.Count==0)throw new InvalidDataException("No EMD bones with _j<number> suffix.");
             string name=Path.GetFileNameWithoutExtension(sourcePath)+"_Motion_"+motion.motionId.ToString("X3");
-            byte[] b=File.ReadAllBytes(sourcePath);
+            byte[] b=sourceBytes;
             int start=motion.blockOffset;
             int end=checked(start+motion.blockByteCount);
             if(start<0||end>b.Length||start>=end)throw new InvalidDataException("Invalid PEMT motion boundaries.");
