@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0 — PEMT AnimationClip container sub-assets (BRRES-style workflow)
+
+- The `.pemt` ScriptedImporter now embeds one real Unity `AnimationClip` sub-asset per successfully decoded numeric Motion ID, just like BRRES/CHR0. Expand `0000.pemt` in the Unity Project window to use the clips directly in an Animator, Timeline, or Animation window. Each stable sub-asset identifier uses `motion_<hex ID>`, and the clip name uses `0000_Motion_<hex ID>`. The original `.pemt` file is never modified and the `PemtMotionLibrary` remains the main imported asset.
+- **Animation Rig (EMD):** assign the canonical EMD model in the PEMT source importer Inspector, or enable **Auto-detect Nearby EMD** (default). Automatic selection scans sibling `model/` for EMD bones and chooses the candidate with the most matching numeric joint IDs. Ambiguous equal-scoring rigs are rejected; the importer never silently binds animation to an arbitrary skeleton.
+- Uses the SAME position, quaternion, coordinate conversion, rest-pose and experimental scale decoder as the existing Preview/Export. Refactored the decoder to accept cached PEMT source bytes during `OnImportAsset` so it does not depend on an as-yet-unregistered `PemtMotionLibrary` asset.
+- **Experimental Scale 0x22** import enabled by default for the tested hypothesis; every corresponding container import warns explicitly that scale semantics are not fully proven. **Allow Partial Clips** is OFF by default; unsupported marker channels otherwise cause that specific Motion ID to be rejected rather than silently producing an incomplete animation.
+- Import failures are isolated per Motion ID. Container metadata remains available when rig selection or decoding fails. A bounded warning summary reports decoding errors. The importer tracks imported, failed, skipped, partial, and experimental-scale clip counts and the chosen rig path.
+- PEMT Inspector now provides importer Apply/Revert settings, clip statistics, and a **Select Embedded Clip for This Motion ID** action. Existing standalone `.anim` export, batch export, isolated Preview, CCM/SEQ and EMD materials remain supported and unchanged.
+- The PEMT `ScriptedImporter` revision was bumped from 4 to 5 to regenerate existing `.pemt` assets. Live Unity 2022.3 compile, import and animation playback testing are still required.
+
+
 ## Unreleased — PEMT coordinate sync and STG Mirror X default
 
 - PEMT position and quaternion rotation deltas now use the same effective coordinate basis as the matching EMD model. Fixes motion orientation when Rotate -90 X or Mirror Left/Right (X Axis) is selected; also respects stage preset overrides. Experimental scale preview follows the same axis permutation.
