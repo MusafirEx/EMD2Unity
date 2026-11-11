@@ -69,6 +69,15 @@ namespace MusafirEx.EMD2Unity
             EditorGUILayout.LabelField("Pointer slots", library.pointerTableEntries.ToString());
             EditorGUILayout.LabelField("Occupied Motion IDs", library.occupiedEntries.ToString());
             EditorGUILayout.LabelField("Track descriptors", library.trackCount.ToString("N0"));
+            EditorGUILayout.LabelField("Embedded AnimationClips", library.embeddedClipCount.ToString("N0"));
+            if (library.embeddedUnboundCount > 0)
+                EditorGUILayout.HelpBox(
+                    library.embeddedUnboundCount + " embedded clip(s) have generic joint-ID paths " +
+                    "and source-space transform curves. Assign the matching EMD rig in " +
+                    "the PEMT source Inspector and Apply to generate playable clips.",
+                    MessageType.Warning);
+            if (!string.IsNullOrEmpty(library.animationRigMessage))
+                EditorGUILayout.LabelField("Animation rig", library.animationRigMessage, EditorStyles.wordWrappedLabel);
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Embedded AnimationClip Sub-assets", EditorStyles.boldLabel);
             EditorGUILayout.LabelField("Clips imported", library.embeddedClipCount.ToString());
