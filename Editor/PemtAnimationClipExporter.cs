@@ -379,6 +379,8 @@ namespace MusafirEx.EMD2Unity
             AnimationClip clip = CreateTransientClip(lib, motion, model, rotateFirst);
             try
             {
+                // Standalone .anim inherits the same Motion-ID loop mode as embedded clips.
+                PemtLoopSettingsUtility.ApplyFromSource(sourcePath, motion.motionId, clip);
                 AssetDatabase.CreateAsset(clip, save);
                 if (interactive)
                 {
