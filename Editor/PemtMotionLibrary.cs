@@ -33,6 +33,16 @@ namespace MusafirEx.EMD2Unity
         public List<PemtTrackMetadata> tracks = new List<PemtTrackMetadata>();
     }
 
+    // Importer-side loop overrides are keyed by numeric Motion ID, not clip name.
+    // The PEMT binary and generated PemtMotionLibrary metadata are never modified.
+    [Serializable]
+    public sealed class PemtMotionLoopSetting
+    {
+        public int motionId;
+        public bool loopTime;
+        public bool loopPose;
+    }
+
     public sealed class PemtMotionLibrary : ScriptableObject
     {
         [HideInInspector] public int sourceByteCount;
