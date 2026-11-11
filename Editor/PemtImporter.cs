@@ -191,7 +191,8 @@ namespace MusafirEx.EMD2Unity
                 if (motion.tracks == null ||
                     !motion.tracks.Exists(t => t != null &&
                         (t.markerHex == "0x02040021" ||
-                         t.markerHex == "0x02040028") &&
+                         t.markerHex == "0x02040028" ||
+                         (importExperimentalScale022 && t.markerHex == "0x02040022")) &&
                         t.dataEndRelative > 0))
                 {
                     skipped++;
@@ -235,7 +236,7 @@ namespace MusafirEx.EMD2Unity
             string summary = "EMD2Unity PEMT embedded Motion IDs: " +
                 library.embeddedClipCount + " clips imported (" +
                 library.embeddedUnboundCount + " unbound), " + skipped +
-                " without position/rotation tracks, " + failed + " decode failures. " +
+                " without supported transform tracks, " + failed + " decode failures. " +
                 explanation + (scale > 0 ? ". " + scale +
                     " clips use EXPERIMENTAL 0x02040022 scale semantics." : "") +
                 (partial > 0 ? " WARNING: " + partial +
