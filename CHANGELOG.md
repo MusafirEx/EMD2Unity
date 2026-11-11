@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.2 — Per-Motion-ID Loop / Once / Loop Pose controls
+
+- Each `.pemt` importer stores **Default Loop Time** (off = Once) and optional per-Motion-ID overrides: **Default**, **Once**, or **Loop**, plus **Loop Pose** for explicit Loop overrides. The Inspector includes a filterable 16-row-per-page table and Apply/Revert. Configuration persists in the Unity source importer; the game PEMT binary is never modified.
+- Embedded bound and unbound `AnimationClip` sub-assets inherit the resolved Loop Time / Loop Pose values. ScriptedImporter revision 7 reimports PEMT containers with the new settings and retains deterministic `motion_<hex ID>` identifiers.
+- Newly exported standalone `.anim` clips inherit the same source PEMT loop mode. The isolated Preview initializes its playback Loop toggle from the selected Motion ID but allows temporary preview-only overrides.
+- Default Once avoids accidentally looping attack, hit, or death motions. Loop Pose is optional and may not remove visual discontinuity in every rig. Existing standalone `.anim` exports are not overwritten by reimport or Export All.
+- Source-level checks completed; Unity compilation and actual loop playback still need to be verified after updating the package in Unity 2022.3.
+
 ## 0.6.1 — PEMT animation-only fallback
 
 - Like animation-only BRRES/CHR0 resources, PEMT files without a matching EMD skeleton now embed decodable Motion IDs as generic unbound AnimationClip sub-assets. Their one-level `PEMT_jXXXX` paths and source-space values are **inspection-only** and cannot directly animate an EMD rig.
