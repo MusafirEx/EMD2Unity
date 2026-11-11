@@ -4,7 +4,7 @@ Native **Unity 2022.3+** Editor package for experimenting with PS3 Kamen Rider *
 
 > **Experimental:** The Editor assembly was previously compiled in Unity 2022.3.62f3. Version 0.4.3 adds an evidence-only CCM-to-PEMT Motion ID cross-reference panel. Version 0.4.2 added a read-only CCM Inspector/Browser for 0x80-byte combo records. Version 0.4.1 added a read-only SEQ Inspector/Browser for big-endian header words, referenced resource strings and raw byte-marker counts (without guessing VM opcodes). Version 0.4.0 added in-Editor PEMT Animation Preview with Play/Pause/Stop, scrubbing, orbit and zoom. Version 0.3.7 adds optional partial recovery of supported polygon records and detailed vertex buffer diagnostics for stage EMDs. Version 0.3.6 supported verifiable nonstandard triangle counts or trailing padding in EMD stage index buffers. Version 0.3.5 added 28-byte UV/color-record support for stage EMD models and flags imported EMD assets containing no renderable geometry. Version 0.3.4 adds batch export of all PEMT motions with transform keys to separate .anim files. The decoder is the same as the working single-motion export. Version 0.3.3 made PEMT Inspector controls interactive when selecting a .pemt source file. The previous UI was attached to the generated ScriptableObject, which Unity displays read-only. A separate PEMT Motion Browser window is also available. The EMD model importer remains unchanged from v0.1.5. Unity rendering, rig and shader equivalence remain pending. It may require fixes for particular models.
 
-### PEMT as a BRRES-style AnimationClip container (v0.6.0)
+### PEMT as a BRRES-style AnimationClip container (v0.6.2)
 
 A single `.pemt` source now embeds **many Unity AnimationClip sub-assets**, one per successfully decoded numeric Motion ID. Expand `0000.pemt` in the Project window to select clips such as `0000_Motion_100` for Animator, Timeline, and Animation workflows. The `.pemt` remains the container: the original binary is not overwritten and the main `PemtMotionLibrary` metadata asset is preserved.
 
@@ -15,6 +15,8 @@ A single `.pemt` source now embeds **many Unity AnimationClip sub-assets**, one 
 This feature is independent of Bress2Unity, but follows its importer-owned sub-asset workflow. A real Unity 2022.3 compile and animation playback test are required before treating the clips as production-validated.
 
 **v0.6.1 animation-only fallback:** If no EMD rig is available, **Import Unbound Clips Without EMD** (enabled by default) still embeds decodable Motion IDs beneath the source `.pemt`. Their paths are generic `PEMT_jXXXX` one-level names and curve values are raw source-space deltas, without the EMD rest pose or axis conversion. These clips are **for inspection only**, not direct playback on an EMD skeleton. Set **Animation Rig (EMD)** and click **Apply** to regenerate correctly bound clips. The Inspector and Console display unbound and failed clip counts. Existing Motion ID sub-asset identifiers remain stable.
+
+**v0.6.2 looping:** Select the source `.pemt` and use **Per-Motion Loop Settings**. **Default Loop Time** is off (Once); each numeric Motion ID has a **Default / Once / Loop** setting. Use **Loop** for known repeating idle/walk/run animations, **Once** for attacks, hits, and death. For explicit Loop entries, optionally enable **Pose** (Unity's Loop Pose / `loopBlend`). Click **Apply** to regenerate the embedded clips; numeric Motion IDs and asset identifiers are preserved. The Inspector includes an ID filter and paging for large PEMT containers. Exporting a *new* standalone `.anim` inherits the same settings; already exported files are intentionally not overwritten. The Preview window starts with the selected Motion ID's Loop value but its on-screen Loop toggle is temporary. No looping flag is inferred from unverified PS3 binary fields, and Loop Pose does not guarantee visually seamless transitions.
 
 ## Install directly from this GitHub repository
 
@@ -31,7 +33,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.6.1.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.6.2.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
