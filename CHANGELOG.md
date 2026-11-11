@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1 — PEMT animation-only fallback
+
+- Like animation-only BRRES/CHR0 resources, PEMT files without a matching EMD skeleton now embed decodable Motion IDs as generic unbound AnimationClip sub-assets. Their one-level `PEMT_jXXXX` paths and source-space values are **inspection-only** and cannot directly animate an EMD rig.
+- Added **Import Unbound Clips Without EMD** (enabled by default), an unbound clip count, and explicit Inspector/Console warnings. Assign the correct EMD model and click **Apply** to regenerate rig-bound clips using established rest-pose/axis decoding.
+- Stable `motion_<hex ID>` sub-asset identifiers and strict per-motion failure handling are preserved. ScriptedImporter revision 6 reimports existing PEMTs; the original game data and separate exported .anim files are not changed.
+- Static checks only. Compilation and actual motion playback must be tested in a project that has EMD2Unity installed.
+
 ## 0.6.0 — PEMT AnimationClip container sub-assets (BRRES-style workflow)
 
 - The `.pemt` ScriptedImporter now embeds one real Unity `AnimationClip` sub-asset per successfully decoded numeric Motion ID, just like BRRES/CHR0. Expand `0000.pemt` in the Unity Project window to use the clips directly in an Animator, Timeline, or Animation window. Each stable sub-asset identifier uses `motion_<hex ID>`, and the clip name uses `0000_Motion_<hex ID>`. The original `.pemt` file is never modified and the `PemtMotionLibrary` remains the main imported asset.
