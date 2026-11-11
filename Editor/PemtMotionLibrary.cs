@@ -43,6 +43,13 @@ namespace MusafirEx.EMD2Unity
         [HideInInspector] public int occupiedEntries;
         [HideInInspector] public int trackCount;
         [HideInInspector] public string importError;
+        [HideInInspector] public string animationRigPath;
+        [HideInInspector] public string animationRigMessage;
+        [HideInInspector] public int embeddedClipCount;
+        [HideInInspector] public int embeddedSkippedCount;
+        [HideInInspector] public int embeddedFailedCount;
+        [HideInInspector] public int embeddedPartialCount;
+        [HideInInspector] public int embeddedScaleCount;
         [HideInInspector] public List<PemtMotionMetadata> motions = new List<PemtMotionMetadata>();
     }
 
