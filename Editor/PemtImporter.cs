@@ -15,11 +15,13 @@ using UnityEngine;
 
 namespace MusafirEx.EMD2Unity
 {
-    [ScriptedImporter(5, "pemt")]
+    [ScriptedImporter(6, "pemt")]
     public sealed class PemtImporter : ScriptedImporter
     {
         [Header("Embedded Animation Clips")]
         [SerializeField] private bool importAnimationClips = true;
+        [Tooltip("When no EMD rig is available, import generic PEMT_jXXXX source-space AnimationClips for inspection. These clips cannot directly animate an EMD model.")]
+        [SerializeField] private bool importUnboundAnimationClips = true;
         [Tooltip("Explicit imported EMD model used for bone paths and rest-pose transforms. Overrides automatic nearby-model selection.")]
         [SerializeField] private GameObject animationRig;
         [Tooltip("Find the best matching EMD skeleton in the sibling model/ folder when Animation Rig is unassigned. Do not select ambiguous ties.")]
@@ -158,18 +160,28 @@ namespace MusafirEx.EMD2Unity
         {
             if (!importAnimationClips || library.motions.Count == 0) return;
             GameObject model = SelectRig(ctx.assetPath, library, out string explanation);
-            if (model == null)
+            bool unbound = model == null;
+            if (unbound)
             {
-                library.animationRigMessage = explanation;
+                library.animationRigMessage = explanation +
+                    " Unbound clips use generic PEMT_jXXXX one-level paths and raw source-space transforms.";
+                if (!importUnboundAnimationClips)
+                {
+                    ctx.LogImportWarning("EMD2Unity PEMT: " + explanation +
+                        " Unbound clip import is disabled. Only metadata was imported.");
+                    return;
+                }
                 ctx.LogImportWarning("EMD2Unity PEMT: " + explanation +
-                    " Metadata remains available, but no rig-bound AnimationClip " +
-                    "sub-assets were generated.");
-                return;
+                    " Falling back to unbound source-space AnimationClip sub-assets. " +
+                    "Assign the matching EMD Animation Rig and Apply for playable clips.");
             }
-            string rigPath = AssetDatabase.GetAssetPath(model);
-            ctx.DependsOnSourceAsset(rigPath);
-            library.animationRigPath = rigPath;
-            library.animationRigMessage = explanation;
+            else
+            {
+                string rigPath = AssetDatabase.GetAssetPath(model);
+                ctx.DependsOnSourceAsset(rigPath);
+                library.animationRigPath = rigPath;
+                library.animationRigMessage = explanation;
+            }
             int failed = 0, skipped = 0, partial = 0, scale = 0;
             var errors = new List<string>();
             string baseName = Path.GetFileNameWithoutExtension(ctx.assetPath);
@@ -192,13 +204,18 @@ namespace MusafirEx.EMD2Unity
                 {
                     var skippedTracks = new List<string>();
                     var scaleTracks = new List<string>();
-                    clip = PemtAnimationClipExporter.CreateFromSourceBytes(
-                        ctx.assetPath, bytes, motion, model, deltaRotationFirst,
-                        allowPartialAnimationClips, skippedTracks,
-                        importExperimentalScale022, scaleTracks);
+                    clip = unbound
+                        ? PemtAnimationClipExporter.CreateUnboundFromSourceBytes(
+                            ctx.assetPath, bytes, motion, allowPartialAnimationClips,
+                            skippedTracks, importExperimentalScale022, scaleTracks)
+                        : PemtAnimationClipExporter.CreateFromSourceBytes(
+                            ctx.assetPath, bytes, motion, model, deltaRotationFirst,
+                            allowPartialAnimationClips, skippedTracks,
+                            importExperimentalScale022, scaleTracks);
                     clip.name = baseName + "_Motion_" + motion.motionId.ToString("X3");
                     ctx.AddObjectToAsset("motion_" + motion.motionId.ToString("X4"), clip);
                     library.embeddedClipCount++;
+                    if (unbound) library.embeddedUnboundCount++;
                     if (skippedTracks.Count > 0) partial++;
                     if (scaleTracks.Count > 0) scale++;
                 }
@@ -216,7 +233,8 @@ namespace MusafirEx.EMD2Unity
             library.embeddedPartialCount = partial;
             library.embeddedScaleCount = scale;
             string summary = "EMD2Unity PEMT embedded Motion IDs: " +
-                library.embeddedClipCount + " clips imported, " + skipped +
+                library.embeddedClipCount + " clips imported (" +
+                library.embeddedUnboundCount + " unbound), " + skipped +
                 " without position/rotation tracks, " + failed + " decode failures. " +
                 explanation + (scale > 0 ? ". " + scale +
                     " clips use EXPERIMENTAL 0x02040022 scale semantics." : "") +
