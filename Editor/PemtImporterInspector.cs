@@ -143,7 +143,7 @@ namespace MusafirEx.EMD2Unity
             PemtMotionLibrary library = AssetDatabase.LoadAssetAtPath<PemtMotionLibrary>(path);
             if (library == null)
             {
-                foreach (Object asset in AssetDatabase.LoadAllAssetsAtPath(path))
+                foreach (UnityEngine.Object asset in AssetDatabase.LoadAllAssetsAtPath(path))
                 {
                     library = asset as PemtMotionLibrary;
                     if (library != null) break;
