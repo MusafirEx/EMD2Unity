@@ -154,31 +154,49 @@ namespace MusafirEx.EMD2Unity
         // AnimationClip sub-assets. During OnImportAsset, the PemtMotionLibrary
         // has not been registered in AssetDatabase, so its path cannot be used.
         // The importer supplies the verified source path and cached source bytes.
+        // Animation-only PEMT fallback, similar to BRRES: source-space curves
+        // with generic joint-ID paths, not playback-ready EMD rig bindings.
+        internal static AnimationClip CreateUnboundFromSourceBytes(string sourcePath,
+            byte[] sourceBytes, PemtMotionMetadata motion, bool allowPartial,
+            List<string> skippedTracks, bool experimentalScale,
+            List<string> experimentalTracks)
+        {
+            return CreateFromSourceBytes(sourcePath, sourceBytes, motion, null,
+                false, allowPartial, skippedTracks, experimentalScale,
+                experimentalTracks, true);
+        }
+
         internal static AnimationClip CreateFromSourceBytes(string sourcePath,
             byte[] sourceBytes, PemtMotionMetadata motion, GameObject model,
             bool rotateFirst, bool allowPartialPreview = false,
             List<string> skippedTracks = null,
             bool experimentalScalePreview = false,
-            List<string> experimentalTracks = null)
+            List<string> experimentalTracks = null, bool unbound = false)
         {
-            if (motion == null || model == null || sourceBytes == null)
-                throw new ArgumentException("PEMT motion, EMD model and source bytes are required.");
+            if (motion == null || sourceBytes == null || (model == null && !unbound))
+                throw new ArgumentException("PEMT motion and bytes are required; a matching EMD rig is required for bound clips.");
             if (string.IsNullOrEmpty(sourcePath) ||
                 !sourcePath.EndsWith(".pemt", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("Invalid PEMT source path.");
-            // Resolve any scene selection to the canonical EMD importer's rest pose.
-            model = ResolveSourceEmdModel(model);
-            string modelPath = AssetDatabase.GetAssetPath(model);
-            var emdImporter = AssetImporter.GetAtPath(modelPath) as EmdImporter;
-            if(emdImporter==null)throw new InvalidDataException("Selected model is not imported by EMD2Unity.");
-            // Use EMD's effective basis; the serialized swapYAndZ field alone
-            // misses Rotate -90 X, Mirror X, and STG preset overrides.
-            Transform armature=model.transform.Find("Armature");
-            if(armature==null)throw new InvalidDataException("Imported EMD model has no Armature. Enable Import Skeleton.");
-            var paths=new Dictionary<int,string>();
-            var bones=new Dictionary<int,Transform>();
-            MapBones(armature,"Armature",paths,bones);
-            if(paths.Count==0)throw new InvalidDataException("No EMD bones with _j<number> suffix.");
+            bool isUnbound = unbound && model == null;
+            var paths = new Dictionary<int, string>();
+            var bones = new Dictionary<int, Transform>();
+            EmdImporter emdImporter = null;
+            if (!isUnbound)
+            {
+                // Keep the exact EMD rest pose and effective coordinate basis.
+                model = ResolveSourceEmdModel(model);
+                string modelPath = AssetDatabase.GetAssetPath(model);
+                emdImporter = AssetImporter.GetAtPath(modelPath) as EmdImporter;
+                if (emdImporter == null)
+                    throw new InvalidDataException("Selected model is not imported by EMD2Unity.");
+                Transform armature = model.transform.Find("Armature");
+                if (armature == null)
+                    throw new InvalidDataException("Imported EMD model has no Armature. Enable Import Skeleton.");
+                MapBones(armature, "Armature", paths, bones);
+                if (paths.Count == 0)
+                    throw new InvalidDataException("No EMD bones with _j<number> suffix.");
+            }
             string name=Path.GetFileNameWithoutExtension(sourcePath)+"_Motion_"+motion.motionId.ToString("X3");
             byte[] b=sourceBytes;
             int start=motion.blockOffset;
@@ -212,7 +230,14 @@ namespace MusafirEx.EMD2Unity
                     int jointId=(int)(info>>16);
                     int count=(int)(info&0xffff);
                     if(count<1)continue;
-                    if(!paths.TryGetValue(jointId,out string path)){missing++;continue;}
+                    string path;
+                    if (isUnbound)
+                        path = "PEMT_j" + jointId.ToString("D4");
+                    else if (!paths.TryGetValue(jointId, out path))
+                    {
+                        missing++;
+                        continue;
+                    }
                     if(!seen.Add(jointId+":"+kind))
                         throw new InvalidDataException("Repeated channel for bone j"+jointId);
                     int timesAt=checked(start+track.dataStartRelative);
@@ -228,7 +253,7 @@ namespace MusafirEx.EMD2Unity
                             (k>0&&time[k]<time[k-1]))
                             throw new InvalidDataException("Invalid key time for bone j"+jointId);
                     }
-                    Transform joint=bones[jointId];
+                    Transform joint = isUnbound ? null : bones[jointId];
                     if(kind==Position)
                     {
                         Vector3[] pos=new Vector3[count];
@@ -236,7 +261,10 @@ namespace MusafirEx.EMD2Unity
                         {
                             int p=valuesAt+k*8;
                             Vector3 delta=new Vector3(Half(b,p),Half(b,p+2),Half(b,p+4));
-                            pos[k]=joint.localPosition+emdImporter.ConvertPemtPositionDelta(delta);
+                            pos[k] = isUnbound ? delta :
+                                joint.localPosition + emdImporter.ConvertPemtPositionDelta(delta);
+                            if (!Finite(pos[k].x) || !Finite(pos[k].y) || !Finite(pos[k].z))
+                                throw new InvalidDataException("Non-finite PEMT position for bone j" + jointId);
                         }
                         WritePosition(clip,path,time,pos);
                     }
@@ -260,8 +288,9 @@ namespace MusafirEx.EMD2Unity
                                     "Experimental 0x02040022 scale hypothesis rejected " +
                                     "for bone j" + jointId + " key " + k +
                                     " (non-finite, nonzero padding or extreme XYZ).");
-                            Vector3 factors = emdImporter.ConvertPemtScaleFactors(new Vector3(x, y, z));
-                            values[k] = Vector3.Scale(joint.localScale, factors);
+                            Vector3 factors = isUnbound ? new Vector3(x, y, z) :
+                                emdImporter.ConvertPemtScaleFactors(new Vector3(x, y, z));
+                            values[k] = isUnbound ? factors : Vector3.Scale(joint.localScale, factors);
                             if (!Finite(values[k].x) || !Finite(values[k].y) ||
                                 !Finite(values[k].z))
                                 throw new InvalidDataException(
@@ -281,12 +310,13 @@ namespace MusafirEx.EMD2Unity
                         {
                             int p=valuesAt+k*8;
                             Quaternion delta=new Quaternion(Half(b,p),Half(b,p+2),Half(b,p+4),Half(b,p+6));
-                            delta=emdImporter.ConvertPemtRotationDelta(delta);
+                            if (!isUnbound) delta = emdImporter.ConvertPemtRotationDelta(delta);
                             float sq=delta.x*delta.x+delta.y*delta.y+delta.z*delta.z+delta.w*delta.w;
                             if(sq<0.5f||sq>1.5f)throw new InvalidDataException("Invalid quaternion on bone j"+jointId);
                             float inv=1f/Mathf.Sqrt(sq);
                             delta=new Quaternion(delta.x*inv,delta.y*inv,delta.z*inv,delta.w*inv);
-                            Quaternion q=rotateFirst?delta*joint.localRotation:joint.localRotation*delta;
+                            Quaternion q = isUnbound ? delta :
+                                (rotateFirst ? delta * joint.localRotation : joint.localRotation * delta);
                             if(k>0&&Quaternion.Dot(q,prev)<0)q=new Quaternion(-q.x,-q.y,-q.z,-q.w);
                             rot[k]=q;prev=q;
                         }
