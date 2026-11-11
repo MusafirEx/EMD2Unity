@@ -215,13 +215,17 @@ namespace MusafirEx.EMD2Unity
             library.embeddedSkippedCount = skipped;
             library.embeddedPartialCount = partial;
             library.embeddedScaleCount = scale;
-            ctx.LogImportWarning("EMD2Unity PEMT embedded Motion IDs: " +
+            string summary = "EMD2Unity PEMT embedded Motion IDs: " +
                 library.embeddedClipCount + " clips imported, " + skipped +
                 " without position/rotation tracks, " + failed + " decode failures. " +
                 explanation + (scale > 0 ? ". " + scale +
                     " clips use EXPERIMENTAL 0x02040022 scale semantics." : "") +
                 (partial > 0 ? " WARNING: " + partial +
-                    " partial clip(s) omit unsupported track channels." : ""));
+                    " partial clip(s) omit unsupported track channels." : "");
+            if (failed > 0 || partial > 0 || scale > 0)
+                ctx.LogImportWarning(summary);
+            else
+                Debug.Log(summary);
             if (errors.Count > 0)
                 ctx.LogImportWarning("EMD2Unity PEMT: first clip errors:\n" +
                     string.Join("\n", errors.ToArray()));
@@ -255,7 +259,18 @@ namespace MusafirEx.EMD2Unity
             ctx.AddObjectToAsset("motions", library);
             ctx.SetMainObject(library);
             if (string.IsNullOrEmpty(library.importError) && bytes != null)
-                ImportAnimationClips(ctx, bytes, library);
+            {
+                try { ImportAnimationClips(ctx, bytes, library); }
+                catch (Exception ex)
+                {
+                    // Container metadata is still useful even when a rig
+                    // dependency or unexpected sub-asset decode fails.
+                    library.animationRigMessage = "Embedded animation import failed: " + ex.Message;
+                    ctx.LogImportWarning("EMD2Unity PEMT: " + library.animationRigMessage +
+                        ". Motion metadata remains importable. " +
+                        "See Console and retry with a matching EMD Animation Rig.");
+                }
+            }
         }
     }
 
