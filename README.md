@@ -14,6 +14,8 @@ A single `.pemt` source now embeds **many Unity AnimationClip sub-assets**, one 
 
 This feature is independent of Bress2Unity, but follows its importer-owned sub-asset workflow. A real Unity 2022.3 compile and animation playback test are required before treating the clips as production-validated.
 
+**v0.6.1 animation-only fallback:** If no EMD rig is available, **Import Unbound Clips Without EMD** (enabled by default) still embeds decodable Motion IDs beneath the source `.pemt`. Their paths are generic `PEMT_jXXXX` one-level names and curve values are raw source-space deltas, without the EMD rest pose or axis conversion. These clips are **for inspection only**, not direct playback on an EMD skeleton. Set **Animation Rig (EMD)** and click **Apply** to regenerate correctly bound clips. The Inspector and Console display unbound and failed clip counts. Existing Motion ID sub-asset identifiers remain stable.
+
 ## Install directly from this GitHub repository
 
 Unity → **Window → Package Manager → + → Add package from git URL...**
@@ -29,7 +31,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.6.0.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.6.1.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
