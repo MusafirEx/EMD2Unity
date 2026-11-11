@@ -41,6 +41,8 @@ namespace MusafirEx.EMD2Unity
             EditorGUILayout.LabelField("EMD2Unity - PEMT Animation Container", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(serializedObject.FindProperty("importAnimationClips"),
                 new GUIContent("Import Animation Clips"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("importUnboundAnimationClips"),
+                new GUIContent("Import Unbound Clips Without EMD"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("animationRig"),
                 new GUIContent("Animation Rig (EMD)", "An imported EMD model with the matching bone hierarchy."));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("autoDetectAnimationRig"),
@@ -53,11 +55,12 @@ namespace MusafirEx.EMD2Unity
                 new GUIContent("Allow Partial Clips"));
             EditorGUILayout.HelpBox(
                 "Each decoded Motion ID becomes an AnimationClip sub-asset under this .pemt " +
-                "(expand the asset in Project). A matching EMD rig is required for " +
-                "correct hierarchical bone paths. Experimental scale 0x02040022 " +
-                "and partial clips require visual verification; partial import " +
-                "skips unsupported tracks only. Apply to reimport. Original .pemt " +
-                "bytes and separately exported .anim assets are not modified.",
+                "(expand the asset in Project). Matching EMD rigs provide hierarchical " +
+                "bone paths and rest pose. Without one, optional unbound clips use " +
+                "generic PEMT_jXXXX paths and raw source-space curves and cannot " +
+                "directly animate an EMD. Experimental scale 0x02040022 and partial " +
+                "clips require visual verification. Apply to reimport; source PEMT " +
+                "bytes and separately exported .anim files remain unchanged.",
                 MessageType.Info);
             if (library == null)
             {
