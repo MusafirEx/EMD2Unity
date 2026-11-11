@@ -69,6 +69,24 @@ namespace MusafirEx.EMD2Unity
             EditorGUILayout.LabelField("Pointer slots", library.pointerTableEntries.ToString());
             EditorGUILayout.LabelField("Occupied Motion IDs", library.occupiedEntries.ToString());
             EditorGUILayout.LabelField("Track descriptors", library.trackCount.ToString("N0"));
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Embedded AnimationClip Sub-assets", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Clips imported", library.embeddedClipCount.ToString());
+            EditorGUILayout.LabelField("Motions with no position/rotation", library.embeddedSkippedCount.ToString());
+            EditorGUILayout.LabelField("Decoding failures", library.embeddedFailedCount.ToString());
+            EditorGUILayout.LabelField("Experimental-scale clips", library.embeddedScaleCount.ToString());
+            EditorGUILayout.LabelField("Partial clips", library.embeddedPartialCount.ToString());
+            if (!string.IsNullOrEmpty(library.animationRigPath))
+                EditorGUILayout.LabelField("EMD animation rig", library.animationRigPath);
+            if (!string.IsNullOrEmpty(library.animationRigMessage))
+                EditorGUILayout.HelpBox(library.animationRigMessage,
+                    library.embeddedClipCount == 0 ? MessageType.Warning : MessageType.Info);
+            EditorGUILayout.HelpBox(
+                "Expand this .pemt asset in Unity's Project window to see its " +
+                "embedded AnimationClips. Clip names retain original numeric Motion IDs. " +
+                "If no clips were produced, assign a matching EMD Animation Rig " +
+                "on the source .pemt import settings and click Apply.",
+                MessageType.Info);
             EditorGUILayout.LabelField("FPS", "60 Hz timing inferred; not confirmed playback FPS");
             EditorGUILayout.Space();
 
@@ -160,6 +178,35 @@ namespace MusafirEx.EMD2Unity
                     MessageType.Warning);
             if (GUILayout.Button("Copy Selected Motion Track Report (hex / offsets)"))
                 PemtMotionTrackDiagnostics.CopyAndLog(library, selected);
+            using (new EditorGUI.DisabledScope(library.embeddedClipCount == 0))
+            {
+                if (GUILayout.Button("Select Embedded Clip for This Motion ID"))
+                {
+                    string path = AssetDatabase.GetAssetPath(library);
+                    string clipName = Path.GetFileNameWithoutExtension(path) +
+                        "_Motion_" + selected.motionId.ToString("X3");
+                    AnimationClip clip = null;
+                    foreach (UnityEngine.Object asset in AssetDatabase.LoadAllAssetsAtPath(path))
+                    {
+                        AnimationClip candidate = asset as AnimationClip;
+                        if (candidate != null && candidate.name == clipName)
+                        {
+                            clip = candidate;
+                            break;
+                        }
+                    }
+                    if (clip != null)
+                    {
+                        Selection.activeObject = clip;
+                        EditorGUIUtility.PingObject(clip);
+                    }
+                    else
+                        EditorUtility.DisplayDialog("No Embedded Motion Clip",
+                            "Motion " + selected.motionIdHex +
+                            " does not have a successfully imported AnimationClip. " +
+                            "Review the PEMT import warnings in Console.", "OK");
+                }
+            }
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("3. Export Selected AnimationClip", EditorStyles.boldLabel);
             rotateDeltaFirst = EditorGUILayout.Toggle("Delta Rotation First", rotateDeltaFirst);
