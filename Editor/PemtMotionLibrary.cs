@@ -46,6 +46,7 @@ namespace MusafirEx.EMD2Unity
         [HideInInspector] public string animationRigPath;
         [HideInInspector] public string animationRigMessage;
         [HideInInspector] public int embeddedClipCount;
+        [HideInInspector] public int embeddedUnboundCount;
         [HideInInspector] public int embeddedSkippedCount;
         [HideInInspector] public int embeddedFailedCount;
         [HideInInspector] public int embeddedPartialCount;
