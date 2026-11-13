@@ -190,6 +190,15 @@ namespace MusafirEx.EMD2Unity
                         new GUIContent("Prefer Referenced _CO for Diffuse"));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("linkNormalMaps"), new GUIContent("Link Normal Textures (Opt-in)"));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("linkSpecularMaps"), new GUIContent("Link Specular Textures (Opt-in)"));
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("materialSmoothness"),
+                        new GUIContent("Smoothness (All Materials)",
+                            "0 = rough/matte, 1 = smooth/glossy. Applies to generated EMD materials on Apply/reimport."));
+                    EditorGUILayout.HelpBox(
+                        "Smoothness is shared by all materials generated from this EMD. " +
+                        "Standard uses _Glossiness and _GlossMapScale; URP/HDRP Lit use _Smoothness. " +
+                        "Click Apply to regenerate embedded material sub-assets. " +
+                        "Separate exported .mat files and Unlit shaders are not modified.",
+                        MessageType.Info);
                     EditorGUILayout.HelpBox(
                         "If a first EMD submaterial is an auxiliary _LI/_BL/_SP/_NO, " +
                         "use a single explicitly referenced _CO when unique; or, " +
