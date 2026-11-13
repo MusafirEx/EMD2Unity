@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.3 — EMD Materials smoothness slider
+
+- Added a **Smoothness (All Materials)** slider (0 = rough/matte, 1 = smooth/glossy; default 0.5) in the EMD source importer's Materials tab. The value is serialized per imported EMD file, not inferred from game data.
+- On import/reimport, the setting is applied to every generated EMD material sub-asset using shader-compatible properties: `_Glossiness` for built-in Standard, `_Smoothness` for URP/HDRP Lit, and `_GlossMapScale` for Standard gloss-map workflows. Shaders without these properties are left unchanged.
+- Select the source `.emd`, change the slider and click **Apply** to regenerate embedded materials. External `.mat` assets are not overwritten, and the original EMD/EMAT/textures are not changed.
+- Bumped EMD ScriptedImporter revision 18 to 19 so existing EMD sources reimport with their saved/default setting. Static source checks performed; verify Unity 2022.3 compilation and rendered appearance with the active render pipeline.
+
 ## 0.6.2 — Per-Motion-ID Loop / Once / Loop Pose controls
 
 - Each `.pemt` importer stores **Default Loop Time** (off = Once) and optional per-Motion-ID overrides: **Default**, **Once**, or **Loop**, plus **Loop Pose** for explicit Loop overrides. The Inspector includes a filterable 16-row-per-page table and Apply/Revert. Configuration persists in the Unity source importer; the game PEMT binary is never modified.
