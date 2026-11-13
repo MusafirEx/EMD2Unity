@@ -24,7 +24,7 @@ namespace MusafirEx.EMD2Unity
         [Range(0, 6)] public int sourceChannel;
     }
 
-    [ScriptedImporter(18, "emd")]
+    [ScriptedImporter(19, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         // LegacySwapYZ preserves earlier imports. RotateMinus90X is a true
@@ -113,6 +113,8 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private bool preferUniqueColourMap = true;
         [SerializeField] private bool linkNormalMaps = false;
         [SerializeField] private bool linkSpecularMaps = false;
+        [Tooltip("Uniform smoothness for all generated EMD materials (0 = rough/matte, 1 = glossy). Applies on import/reimport; material shaders without a smoothness property are unaffected.")]
+        [SerializeField, Range(0f, 1f)] private float materialSmoothness = 0.5f;
 
         public override void OnImportAsset(AssetImportContext ctx)
         {
@@ -477,6 +479,18 @@ namespace MusafirEx.EMD2Unity
                         }
                     }
                 }
+                // The same importer-owned value applies across all EMD material
+                // sub-assets. Standard uses _Glossiness; URP/HDRP Lit use
+                // _Smoothness. When Standard uses a specular/gloss texture,
+                // _GlossMapScale controls the map's gloss contribution.
+                // Skip Unlit/other shaders that do not expose these properties.
+                float smoothness = Mathf.Clamp01(materialSmoothness);
+                if (mat.HasProperty("_Glossiness"))
+                    mat.SetFloat("_Glossiness", smoothness);
+                if (mat.HasProperty("_Smoothness"))
+                    mat.SetFloat("_Smoothness", smoothness);
+                if (mat.HasProperty("_GlossMapScale"))
+                    mat.SetFloat("_GlossMapScale", smoothness);
                 materials[i] = mat;
                 ctx.AddObjectToAsset("material_" + i, mat);
             }
