@@ -18,6 +18,12 @@ This feature is independent of Bress2Unity, but follows its importer-owned sub-a
 
 **v0.6.2 looping:** Select the source `.pemt` and use **Per-Motion Loop Settings**. **Default Loop Time** is off (Once); each numeric Motion ID has a **Default / Once / Loop** setting. Use **Loop** for known repeating idle/walk/run animations, **Once** for attacks, hits, and death. For explicit Loop entries, optionally enable **Pose** (Unity's Loop Pose / `loopBlend`). Click **Apply** to regenerate the embedded clips; numeric Motion IDs and asset identifiers are preserved. The Inspector includes an ID filter and paging for large PEMT containers. Exporting a *new* standalone `.anim` inherits the same settings; already exported files are intentionally not overwritten. The Preview window starts with the selected Motion ID's Loop value but its on-screen Loop toggle is temporary. No looping flag is inferred from unverified PS3 binary fields, and Loop Pose does not guarantee visually seamless transitions.
 
+### EMD Materials smoothness (v0.6.3)
+
+Select an imported `.emd` source asset in the Project window and open the **Materials** tab. Adjust **Smoothness (All Materials)** from 0 (rough/matte) to 1 (very smooth/glossy), then click **Apply**. The default is **0.5** and the value is saved per EMD importer so it persists after reimport. This is a **uniform override for all generated material sub-assets in that EMD**, not a separate slider per submaterial.
+
+The importer applies `_Glossiness` / `_GlossMapScale` where available (built-in Standard/specular workflow), or `_Smoothness` (URP/HDRP Lit). The shader must support the relevant property; Unlit materials ignore the setting. A gloss or specular texture may influence the visible result. Existing separate `.mat` exports and original game files remain unchanged. ScriptedImporter revision 19 regenerates EMD imports; verify with your project's active render pipeline.
+
 ## Install directly from this GitHub repository
 
 Unity → **Window → Package Manager → + → Add package from git URL...**
@@ -33,7 +39,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.6.2.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.6.3.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
