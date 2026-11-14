@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.8 — Fix Unity 2022 EMD material extraction compilation
+
+- Added missing Unity `.meta` GUID files for `EmdMaterialRegistry.cs` and `EmdMaterialExtraction.cs`, so the Git UPM package can include these scripts in `MusafirEx.EMD2Unity.Editor` compilation (CS0246).
+- Renamed the colliding `linked` local in EMD normal-map binding to `normalWasLinked` (CS0136). The external `.mat` material binding variable remains unchanged.
+- Source EMD material-table indexing and non-destructive `model/material/` extraction behavior are unchanged. Verified against the six reported Unity Console compiler diagnostics; live Unity compilation needs the updated UPM package to be installed.
+
 ## 0.6.7 — Exact source EMD material count, independent of meshes
 
 - Material extraction now reads the importer-generated **EMD material table registry** by source Material Index. It does not use the mesh count, mesh name, renderer material arrays or mesh assignment count, and it does not re-parse geometry during extraction.
