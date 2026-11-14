@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.4 — EMD normal texture linking repair
+
+- Fixed **Link Normal Textures** being enabled but doing nothing when EMAT omitted an exact `*_NO` texture reference. When the chosen diffuse basename ends with `_CO`, the importer now searches only the local exact-stem `_NO` counterpart (for example `ACL00body02_CO` → `ACL00body02_NO`) in the model's supported nearby texture folders, regardless of whether EMAT lists it.
+- Searches all exact-stem local candidates in a deterministic order; if an earlier file has the wrong Unity import type or fails to load, a later usable candidate may still be linked. Tracks each source as an import dependency.
+- Sets normal textures on `_BumpMap` (Standard/URP) or `_NormalMap` (HDRP) where available and enables the relevant normal keywords. Materials with no supported normal slot remain unchanged.
+- Adds one per-EMD Console summary reporting bound normals, unprepared textures, unloadable files, unsupported shaders and missing local normal counterparts.
+- Normal textures must still be imported with `TextureImporterType.NormalMap`. Use **Materials → Prepare Nearby _NO Textures as Normal Maps**, then **Apply**. Avoids automatically reimporting textures inside EMD `OnImportAsset` and changing unrelated external assets; source binaries and exported `.mat` files are unchanged.
+- EMD ScriptedImporter revision 20 reimports EMD assets. Static code checks performed; actual Unity 2022.3 compile and visual shading require verification.
+
 ## 0.6.3 — EMD Materials smoothness slider
 
 - Added a **Smoothness (All Materials)** slider (0 = rough/matte, 1 = smooth/glossy; default 0.5) in the EMD source importer's Materials tab. The value is serialized per imported EMD file, not inferred from game data.
