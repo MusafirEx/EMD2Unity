@@ -10,7 +10,112 @@ namespace MusafirEx.EMD2Unity
     public sealed class EmdImporterInspector : ScriptedImporterEditor
     {
         private int tab;
+        private int materialPage;
+        private const int MaterialsPerPage = 20;
         private static readonly string[] Tabs = { "Model", "Rig", "Materials", "Animation" };
+
+        private void DrawSourceMaterialTable(EmdImporter selectedEmd)
+        {
+            EditorGUILayout.LabelField("EMD Source Material Table (No Mesh References)",
+                EditorStyles.boldLabel);
+            if (selectedEmd == null) return;
+
+            EmdMaterialRegistry registry = null;
+            foreach (UnityEngine.Object asset in
+                AssetDatabase.LoadAllAssetsAtPath(selectedEmd.assetPath))
+            {
+                registry = asset as EmdMaterialRegistry;
+                if (registry != null) break;
+            }
+            if (registry == null || registry.generatedMaterials == null ||
+                registry.sourceMaterialNames == null ||
+                registry.generatedMaterials.Length != registry.sourceMaterialNames.Length)
+            {
+                EditorGUILayout.HelpBox(
+                    "Material index registry is not available yet. Reimport the EMD " +
+                    "after upgrading EMD2Unity. The registry stores the original EMD " +
+                    "material table, independently of mesh count or MeshRenderer slots.",
+                    MessageType.Warning);
+                return;
+            }
+
+            int sourceCount = registry.sourceMaterialNames.Length;
+            int generatedCount = 0, linkedCount = 0;
+            SerializedProperty external = serializedObject.FindProperty("externalMaterials");
+            for (int i = 0; i < sourceCount; i++)
+            {
+                if (registry.generatedMaterials[i] != null) generatedCount++;
+                if (external != null && i < external.arraySize &&
+                    external.GetArrayElementAtIndex(i).objectReferenceValue != null)
+                    linkedCount++;
+            }
+            EditorGUILayout.LabelField("Materials Declared in EMD",
+                sourceCount.ToString());
+            EditorGUILayout.LabelField("Generated Material Sub-assets",
+                generatedCount.ToString());
+            EditorGUILayout.LabelField("External Material References",
+                linkedCount.ToString());
+            if (sourceCount != generatedCount)
+                EditorGUILayout.HelpBox(
+                    (sourceCount - generatedCount) +
+                    " EMD material entries have no generated material sub-asset. " +
+                    "See Console import warnings before extraction.",
+                    MessageType.Warning);
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Index", GUILayout.Width(48));
+            EditorGUILayout.LabelField("Original EMD Material Name");
+            EditorGUILayout.LabelField("Generated", GUILayout.Width(75));
+            EditorGUILayout.LabelField("External", GUILayout.Width(65));
+            EditorGUILayout.EndHorizontal();
+
+            int maxPage = sourceCount == 0 ? 0 : (sourceCount - 1) / MaterialsPerPage;
+            materialPage = Mathf.Clamp(materialPage, 0, maxPage);
+            int start = materialPage * MaterialsPerPage;
+            int end = Mathf.Min(sourceCount, start + MaterialsPerPage);
+            for (int i = start; i < end; i++)
+            {
+                EditorGUILayout.BeginHorizontal();
+                EditorGUILayout.LabelField(i.ToString("D3"), GUILayout.Width(48));
+                EditorGUILayout.LabelField(registry.sourceMaterialNames[i] ?? "");
+                EditorGUILayout.LabelField(registry.generatedMaterials[i] != null ?
+                    "Yes" : "Missing", GUILayout.Width(75));
+                bool hasExternal = external != null && i < external.arraySize &&
+                    external.GetArrayElementAtIndex(i).objectReferenceValue != null;
+                EditorGUILayout.LabelField(hasExternal ? "Yes" : "No",
+                    GUILayout.Width(65));
+                EditorGUILayout.EndHorizontal();
+            }
+            EditorGUILayout.BeginHorizontal();
+            using (new EditorGUI.DisabledScope(materialPage == 0))
+                if (GUILayout.Button("Previous")) materialPage--;
+            GUILayout.Label("Page " + (materialPage + 1) + "/" + (maxPage + 1),
+                GUILayout.Width(100));
+            using (new EditorGUI.DisabledScope(materialPage >= maxPage))
+                if (GUILayout.Button("Next")) materialPage++;
+            EditorGUILayout.EndHorizontal();
+
+            if (GUILayout.Button("Copy EMD Material Index Report"))
+            {
+                var report = new System.Text.StringBuilder();
+                report.AppendLine("EMD2Unity source material table: " +
+                    selectedEmd.assetPath);
+                report.AppendLine("EMD entries: " + sourceCount +
+                    ", generated: " + generatedCount + ", linked external: " + linkedCount);
+                for (int i = 0; i < sourceCount; i++)
+                {
+                    bool hasExternal = external != null && i < external.arraySize &&
+                        external.GetArrayElementAtIndex(i).objectReferenceValue != null;
+                    report.Append(i.ToString("D3")).Append(" | ")
+                        .Append(registry.sourceMaterialNames[i]).Append(" | generated=")
+                        .Append(registry.generatedMaterials[i] != null).Append(" | external=")
+                        .AppendLine(hasExternal.ToString());
+                }
+                EditorGUIUtility.systemCopyBuffer = report.ToString();
+                Debug.Log("EMD2Unity: copied source EMD Material Index report for " +
+                    selectedEmd.assetPath + " (" + sourceCount + " entries).");
+            }
+        }
 
         public override void OnInspectorGUI()
         {
@@ -184,6 +289,8 @@ namespace MusafirEx.EMD2Unity
                     EditorGUILayout.HelpBox("Skeleton and four-influence skinning are experimental until validated against a real Battride War Genesis EMD file. Generic/Humanoid avatar mapping is not automatic.", MessageType.Info);
                     break;
                 case 2:
+                    DrawSourceMaterialTable(selectedEmd);
+                    EditorGUILayout.Space();
                     EditorGUILayout.LabelField("External Editable Materials", EditorStyles.boldLabel);
                     EditorGUILayout.HelpBox(
                         "Extract Materials creates one editable .mat per EMD source material in " +
