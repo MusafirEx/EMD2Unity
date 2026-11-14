@@ -18,6 +18,12 @@ This feature is independent of Bress2Unity, but follows its importer-owned sub-a
 
 **v0.6.2 looping:** Select the source `.pemt` and use **Per-Motion Loop Settings**. **Default Loop Time** is off (Once); each numeric Motion ID has a **Default / Once / Loop** setting. Use **Loop** for known repeating idle/walk/run animations, **Once** for attacks, hits, and death. For explicit Loop entries, optionally enable **Pose** (Unity's Loop Pose / `loopBlend`). Click **Apply** to regenerate the embedded clips; numeric Motion IDs and asset identifiers are preserved. The Inspector includes an ID filter and paging for large PEMT containers. Exporting a *new* standalone `.anim` inherits the same settings; already exported files are intentionally not overwritten. The Preview window starts with the selected Motion ID's Loop value but its on-screen Loop toggle is temporary. No looping flag is inferred from unverified PS3 binary fields, and Loop Pose does not guarantee visually seamless transitions.
 
+### EMD normal map binding (v0.6.4)
+
+When **Link Normal Textures (Opt-in)** is enabled in the EMD source's **Materials** tab, EMD2Unity matches `*_NO` images by the exact selected diffuse `*_CO` basename (e.g. `ACL00body02_CO.dds` → `ACL00body02_NO.dds`). An EMAT reference is **not required** if the exact pair exists in the local textures folders. No unrelated/approximate normal texture is substituted. The Console reports how many material normals were actually linked and how many were missing, not prepared, unloadable or unsupported by the shader.
+
+**Important:** Enabling the checkbox alone does not change a texture's Unity import type. If Console says normal textures need preparation, click **Prepare Nearby _NO Textures as Normal Maps**, then click **Apply**. The preparation tool updates nearby `*_NO` TextureImporter settings; it does not decode unknown/custom PS3 channel packing. If no exact `_NO` source file exists, the material stays without a normal map. Standalone extracted `.mat` files are not overwritten.
+
 ### EMD Materials smoothness (v0.6.3)
 
 Select an imported `.emd` source asset in the Project window and open the **Materials** tab. Adjust **Smoothness (All Materials)** from 0 (rough/matte) to 1 (very smooth/glossy), then click **Apply**. The default is **0.5** and the value is saved per EMD importer so it persists after reimport. This is a **uniform override for all generated material sub-assets in that EMD**, not a separate slider per submaterial.
@@ -39,7 +45,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.6.3.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.6.4.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
