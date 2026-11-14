@@ -24,7 +24,7 @@ namespace MusafirEx.EMD2Unity
         [Range(0, 6)] public int sourceChannel;
     }
 
-    [ScriptedImporter(22, "emd")]
+    [ScriptedImporter(23, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         // LegacySwapYZ preserves earlier imports. RotateMinus90X is a true
@@ -132,14 +132,18 @@ namespace MusafirEx.EMD2Unity
                 !assetPath.EndsWith(".emd", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Select a source .emd file to extract materials.");
 
-            // Parse with the SAME settings as the model import to preserve
-            // MaterialIndex order, including duplicate material names.
-            EmdDocument document = EmdParser.Parse(
-                File.ReadAllBytes(assetPath), recoverSupportedPolygons,
-                EffectivePreserveZeroUvWords, EffectiveAlignUvBlocksTo16,
-                EffectiveVertexColorsRgbaLast);
-            if (document.Materials.Count == 0)
-                throw new InvalidOperationException("The selected EMD has no materials to extract.");
+            // Read the already imported EMD MATERIAL TABLE snapshot only.
+            // Do NOT parse mesh/polygon data, inspect renderers or use mesh
+            // names as material references during extraction.
+            EmdMaterialRegistry registry = AssetDatabase.LoadAllAssetsAtPath(assetPath)
+                .OfType<EmdMaterialRegistry>().FirstOrDefault();
+            if (registry == null || registry.generatedMaterials == null ||
+                registry.sourceMaterialNames == null ||
+                registry.generatedMaterials.Length == 0 ||
+                registry.generatedMaterials.Length != registry.sourceMaterialNames.Length)
+                throw new InvalidOperationException(
+                    "The EMD material table is not available. Reimport this .emd " +
+                    "using EMD2Unity v0.6.6+, then extract its materials.");
 
             string modelFolder = Path.GetDirectoryName(assetPath)?.Replace('\\', '/');
             if (string.IsNullOrEmpty(modelFolder) || !AssetDatabase.IsValidFolder(modelFolder))
@@ -153,19 +157,15 @@ namespace MusafirEx.EMD2Unity
                     throw new IOException("Unable to create material folder: " + materialFolder);
             }
 
-            // Only EMD-generated material sub-assets may be used as extraction
-            // templates. Never inspect MeshRenderer, SkinnedMeshRenderer,
-            // MeshFilter, mesh names, or material assignments on mesh objects.
-            // The source EMD material table and its numeric index are authoritative.
-            Material[] embedded = AssetDatabase.LoadAllAssetsAtPath(assetPath)
-                .OfType<Material>().ToArray();
-            while (externalMaterials.Count < document.Materials.Count)
+            // Only generated EMD material templates from the source index table
+            // are used; not MeshRenderer, SkinnedMeshRenderer, MeshFilter or mesh names.
+            while (externalMaterials.Count < registry.generatedMaterials.Length)
                 externalMaterials.Add(null);
 
             string modelName = Path.GetFileNameWithoutExtension(assetPath);
-            for (int i = 0; i < document.Materials.Count; i++)
+            for (int i = 0; i < registry.generatedMaterials.Length; i++)
             {
-                string originalName = document.Materials[i].Name;
+                string originalName = registry.sourceMaterialNames[i];
                 if (string.IsNullOrWhiteSpace(originalName))
                     originalName = "EMD_Material_" + i;
                 string safeName = Regex.Replace(originalName, @"[^A-Za-z0-9_-]+", "_")
@@ -204,13 +204,12 @@ namespace MusafirEx.EMD2Unity
                     continue;
                 }
 
-                // Every generated EMD sub-asset carries its source MaterialIndex.
-                // Never infer a match from names: duplicate source material names
-                // are legal and a mesh name or renderer assignment is not evidence.
-                // For legacy untagged EMD imports, reimport before extraction.
-                string sourceId = i.ToString();
-                Material source = embedded.FirstOrDefault(m => m != null &&
-                    m.GetTag(SourceMaterialIndexTag, false, "") == sourceId);
+                // The registry indexes materials directly from the .emd source
+                // Material[] table, not mesh materials, names or hierarchy.
+                Material source = registry.generatedMaterials[i];
+                if (source != null &&
+                    source.GetTag(SourceMaterialIndexTag, false, "") != i.ToString())
+                    source = null;
                 if (source == null)
                 {
                     failed++;
@@ -456,6 +455,7 @@ namespace MusafirEx.EMD2Unity
             int normalShaderUnsupportedCount = 0;
             int normalMissingCount = 0;
             var materials = new Material[doc.Materials.Count];
+            var generatedMaterials = new Material[doc.Materials.Count];
             for (int i = 0; i < materials.Length; ++i)
             {
                 EmdMaterial info = doc.Materials[i];
@@ -679,8 +679,19 @@ namespace MusafirEx.EMD2Unity
                     materials[i] = mat;
                 // Keep stable generated subassets as extraction sources and
                 // fallback when an external material is unassigned/missing.
+                generatedMaterials[i] = mat;
                 ctx.AddObjectToAsset("material_" + i, mat);
             }
+
+            // Snapshot the EMD material declaration order once during import.
+            // Extraction reads ONLY this registry: it never reads mesh geometry,
+            // renderer material arrays or scene objects as material evidence.
+            var materialRegistry = ScriptableObject.CreateInstance<EmdMaterialRegistry>();
+            materialRegistry.name = name + " [EMD Material Table]";
+            materialRegistry.generatedMaterials = generatedMaterials;
+            materialRegistry.sourceMaterialNames = doc.Materials
+                .Select(m => m.Name ?? "").ToArray();
+            ctx.AddObjectToAsset("material_registry", materialRegistry);
 
             if (findNearbyTextures && linkNormalMaps)
             {
