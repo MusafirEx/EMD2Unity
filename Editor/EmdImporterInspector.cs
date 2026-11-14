@@ -184,6 +184,52 @@ namespace MusafirEx.EMD2Unity
                     EditorGUILayout.HelpBox("Skeleton and four-influence skinning are experimental until validated against a real Battride War Genesis EMD file. Generic/Humanoid avatar mapping is not automatic.", MessageType.Info);
                     break;
                 case 2:
+                    EditorGUILayout.LabelField("External Editable Materials", EditorStyles.boldLabel);
+                    EditorGUILayout.HelpBox(
+                        "Extract Materials creates one editable .mat per EMD source material in " +
+                        "model/material/ (alongside any .emat files), then rebinds this EMD model " +
+                        "to those assets. Reimports never overwrite an existing .mat. " +
+                        "Change shaders, Normal Maps, Smoothness and other properties directly " +
+                        "on the extracted .mat files. Settings below only affect generated " +
+                        "embedded/fallback materials, not your external .mat edits.",
+                        MessageType.Info);
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("externalMaterials"),
+                        new GUIContent("External Materials (by Source Index)"), true);
+                    using (new EditorGUI.DisabledScope(selectedEmd == null))
+                    {
+                        if (GUILayout.Button("Extract Materials to model/material", GUILayout.Height(27f)))
+                        {
+                            // Save any pending inspector fields before extracting;
+                            // the explicit action creates/links assets, then reimports.
+                            serializedObject.ApplyModifiedProperties();
+                            try
+                            {
+                                int created, reused, failed;
+                                selectedEmd.ExtractMaterialsToFolder(out created, out reused, out failed);
+                                Debug.Log("EMD2Unity material extraction for " +
+                                    selectedEmd.assetPath + ": " + created +
+                                    " .mat files created, " + reused +
+                                    " existing .mat files reused, " + failed +
+                                    " could not be extracted. Original .emat, DDS and .emd are unchanged.");
+                                selectedEmd.SaveAndReimport();
+                                EditorUtility.DisplayDialog("EMD2Unity Materials Extracted",
+                                    "Folder: model/material/\\nCreated: " + created +
+                                    "\\nReused (not overwritten): " + reused +
+                                    "\\nFailed: " + failed +
+                                    "\\n\\nEdit the new .mat files directly in Unity. " +
+                                    "This model now references the extracted materials.", "OK");
+                            }
+                            catch (System.Exception ex)
+                            {
+                                Debug.LogException(ex);
+                                EditorUtility.DisplayDialog(
+                                    "EMD2Unity Material Extraction Failed", ex.Message, "OK");
+                            }
+                            GUIUtility.ExitGUI();
+                        }
+                    }
+                    EditorGUILayout.Space();
+                    EditorGUILayout.LabelField("Generated Material Defaults", EditorStyles.boldLabel);
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("findNearbyTextures"), new GUIContent("Find DDS/PNG Textures Nearby"));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("useEmatTextureReferences"), new GUIContent("Read Companion EMAT Texture Names"));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("preferUniqueColourMap"),
@@ -196,10 +242,10 @@ namespace MusafirEx.EMD2Unity
                         new GUIContent("Smoothness (All Materials)",
                             "0 = rough/matte, 1 = smooth/glossy. Applies to generated EMD materials on Apply/reimport."));
                     EditorGUILayout.HelpBox(
-                        "Smoothness is shared by all materials generated from this EMD. " +
+                        "Smoothness is shared by embedded materials generated from this EMD. " +
                         "Standard uses _Glossiness and _GlossMapScale; URP/HDRP Lit use _Smoothness. " +
-                        "Click Apply to regenerate embedded material sub-assets. " +
-                        "Separate exported .mat files and Unlit shaders are not modified.",
+                        "Click Apply to regenerate embedded/fallback material sub-assets. " +
+                        "Externally extracted .mat materials are user-owned and are NEVER overwritten.",
                         MessageType.Info);
                     EditorGUILayout.HelpBox(
                         "If a first EMD submaterial is an auxiliary _LI/_BL/_SP/_NO, " +
