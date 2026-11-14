@@ -572,7 +572,7 @@ namespace MusafirEx.EMD2Unity
                             }
                             else
                             {
-                                bool linked = false;
+                                bool normalWasLinked = false;
                                 bool needsPreparation = false;
                                 bool unsupportedShader = false;
                                 foreach (string normalPath in candidates)
@@ -614,10 +614,10 @@ namespace MusafirEx.EMD2Unity
                                     mat.EnableKeyword("_NORMALMAP");
                                     if (mat.HasProperty("_NormalMap"))
                                         mat.EnableKeyword("_NORMALMAP_TANGENT_SPACE");
-                                    linked = true;
+                                    normalWasLinked = true;
                                     break;
                                 }
-                                if (linked) normalBoundCount++;
+                                if (normalWasLinked) normalBoundCount++;
                                 else if (unsupportedShader) normalShaderUnsupportedCount++;
                                 else if (needsPreparation) normalUnpreparedCount++;
                                 else normalUnloadableCount++;
