@@ -24,7 +24,7 @@ namespace MusafirEx.EMD2Unity
         [Range(0, 6)] public int sourceChannel;
     }
 
-    [ScriptedImporter(20, "emd")]
+    [ScriptedImporter(21, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         // LegacySwapYZ preserves earlier imports. RotateMinus90X is a true
@@ -699,10 +699,72 @@ namespace MusafirEx.EMD2Unity
             }
         }
 
-        // Called from the Inspector, never from OnImportAsset: changing an importer
-        // during its own import would cause nested imports/reimport loops.
-        // Every *_NO image in the model's adjacent textures directory is treated
-        // as a normal map; existing NormalMap importers are left unchanged.
+        // EMD normal preparation is an explicit Inspector action, never run
+        // during OnImportAsset (which would create nested imports).
+        // Unity 2022.3 uses IHVImageFormatImporter for DDS: it has no
+        // TextureImporterType.NormalMap setting. Generate a non-destructive
+        // PNG companion instead, and configure that PNG as a Unity Normal Map.
+        private static bool TryCreateDdsNormalPng(string ddsPath, out string pngPath)
+        {
+            pngPath = Path.ChangeExtension(ddsPath, ".png").Replace('\\', '/');
+            // Never overwrite user-created PNGs or repeated conversions.
+            if (File.Exists(pngPath)) return true;
+            Texture2D source = AssetDatabase.LoadAssetAtPath<Texture2D>(ddsPath);
+            if (source == null || source.width <= 0 || source.height <= 0 ||
+                source.width > 8192 || source.height > 8192)
+            {
+                Debug.LogWarning("EMD2Unity: cannot convert DDS normal map " + ddsPath +
+                    " to a PNG companion (unloadable or dimensions exceed 8192).");
+                return false;
+            }
+
+            RenderTexture previous = RenderTexture.active;
+            RenderTexture target = null;
+            Texture2D pixels = null;
+            try
+            {
+                // GPU readback works with many hardware-compressed DDS formats
+                // without changing readability or the original DDS source.
+                target = RenderTexture.GetTemporary(source.width, source.height, 0,
+                    RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+                Graphics.Blit(source, target);
+                RenderTexture.active = target;
+                pixels = new Texture2D(source.width, source.height,
+                    TextureFormat.RGBA32, false, true);
+                pixels.ReadPixels(new Rect(0, 0, source.width, source.height),
+                    0, 0, false);
+                pixels.Apply(false, false);
+                byte[] encoded = pixels.EncodeToPNG();
+                if (encoded == null || encoded.Length == 0)
+                    throw new IOException("PNG encoder produced no bytes.");
+                File.WriteAllBytes(pngPath, encoded);
+                AssetDatabase.ImportAsset(pngPath, ImportAssetOptions.ForceUpdate);
+                Debug.Log("EMD2Unity: created editable normal-map companion " +
+                    pngPath + " from " + ddsPath +
+                    ". Original DDS was not modified. Inspect normal orientation visually.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("EMD2Unity: DDS normal map conversion failed for " +
+                    ddsPath + ": " + ex.Message);
+                // Do not leave a damaged partially written source asset.
+                if (File.Exists(pngPath) &&
+                    AssetDatabase.LoadAssetAtPath<Texture2D>(pngPath) == null)
+                    AssetDatabase.DeleteAsset(pngPath);
+                return false;
+            }
+            finally
+            {
+                RenderTexture.active = previous;
+                if (target != null) RenderTexture.ReleaseTemporary(target);
+                if (pixels != null) UnityEngine.Object.DestroyImmediate(pixels);
+            }
+        }
+
+        // Prepare adjacent *_NO textures. PNG/TGA/etc use TextureImporter,
+        // but DDS imported through IHVImageFormatImporter cannot set TextureType.
+        // For those, generate a sibling *_NO.png normal asset on explicit click.
         internal static int PrepareNearbyNormalTextures(string emdPath, out int matched)
         {
             matched = 0;
@@ -715,22 +777,51 @@ namespace MusafirEx.EMD2Unity
             foreach (string directory in directories)
             {
                 if (!Directory.Exists(directory)) continue;
-                foreach (string file in Directory.EnumerateFiles(directory))
+                // Snapshot before creating PNG files to avoid mutating a live
+                // Directory.EnumerateFiles iterator during asset import.
+                string[] files = Directory.GetFiles(directory);
+                Array.Sort(files, StringComparer.OrdinalIgnoreCase);
+                foreach (string file in files)
                 {
-                    if (!Path.GetFileNameWithoutExtension(file).EndsWith("_NO", StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    if (!extensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
-                        continue;
+                    if (!Path.GetFileNameWithoutExtension(file).EndsWith("_NO",
+                        StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!extensions.Contains(Path.GetExtension(file),
+                        StringComparer.OrdinalIgnoreCase)) continue;
                     string assetPath = file.Replace('\\', '/');
                     if (!visited.Add(assetPath)) continue;
-                    var textureImporter = AssetImporter.GetAtPath(assetPath) as TextureImporter;
-                    if (textureImporter == null) continue;
+                    AssetImporter importer = AssetImporter.GetAtPath(assetPath);
+                    if (importer is TextureImporter imageImporter)
+                    {
+                        matched++;
+                        if (imageImporter.textureType == TextureImporterType.NormalMap)
+                            continue;
+                        imageImporter.textureType = TextureImporterType.NormalMap;
+                        imageImporter.sRGBTexture = false;
+                        imageImporter.SaveAndReimport();
+                        updated++;
+                        continue;
+                    }
+                    if (!(importer is IHVImageFormatImporter) ||
+                        !assetPath.EndsWith(".dds", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
                     matched++;
-                    if (textureImporter.textureType == TextureImporterType.NormalMap) continue;
-                    textureImporter.textureType = TextureImporterType.NormalMap;
-                    textureImporter.sRGBTexture = false;
-                    textureImporter.SaveAndReimport();
-                    updated++;
+                    if (!TryCreateDdsNormalPng(assetPath, out string pngPath))
+                        continue;
+                    var pngImporter = AssetImporter.GetAtPath(pngPath) as TextureImporter;
+                    if (pngImporter == null)
+                    {
+                        Debug.LogWarning("EMD2Unity: generated PNG has no TextureImporter: " +
+                            pngPath);
+                        continue;
+                    }
+                    if (pngImporter.textureType != TextureImporterType.NormalMap)
+                    {
+                        pngImporter.textureType = TextureImporterType.NormalMap;
+                        pngImporter.sRGBTexture = false;
+                        pngImporter.SaveAndReimport();
+                        updated++;
+                    }
                 }
             }
             return updated;
