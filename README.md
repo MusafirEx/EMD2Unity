@@ -18,7 +18,7 @@ This feature is independent of Bress2Unity, but follows its importer-owned sub-a
 
 **v0.6.2 looping:** Select the source `.pemt` and use **Per-Motion Loop Settings**. **Default Loop Time** is off (Once); each numeric Motion ID has a **Default / Once / Loop** setting. Use **Loop** for known repeating idle/walk/run animations, **Once** for attacks, hits, and death. For explicit Loop entries, optionally enable **Pose** (Unity's Loop Pose / `loopBlend`). Click **Apply** to regenerate the embedded clips; numeric Motion IDs and asset identifiers are preserved. The Inspector includes an ID filter and paging for large PEMT containers. Exporting a *new* standalone `.anim` inherits the same settings; already exported files are intentionally not overwritten. The Preview window starts with the selected Motion ID's Loop value but its on-screen Loop toggle is temporary. No looping flag is inferred from unverified PS3 binary fields, and Loop Pose does not guarantee visually seamless transitions.
 
-### Editable external EMD materials (v0.6.6)
+### Editable external EMD materials (v0.6.7)
 
 To customize EMD material shaders and textures without losing edits on reimport, select the source `.emd` (for example `Assets/chr/ACL/ACL00/model/ACL00.emd`), open **Materials**, and click **Extract Materials to model/material**. The tool creates or reuses individual `.mat` assets under the nearby `Assets/chr/ACL/ACL00/model/material/` directory, alongside any source `.emat` files. Each filename includes the EMD basename and the numeric material index, so duplicate material names do not collide (example: `ACL00_Mat_000_body00.mat`).
 
@@ -59,7 +59,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.6.6.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.6.7.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
