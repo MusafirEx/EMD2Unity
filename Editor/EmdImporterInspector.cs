@@ -228,6 +228,20 @@ namespace MusafirEx.EMD2Unity
                             GUIUtility.ExitGUI();
                         }
                     }
+                    if (GUILayout.Button("Select model/material Folder"))
+                    {
+                        string folder = System.IO.Path.GetDirectoryName(selectedEmd.assetPath)
+                            ?.Replace('\\', '/') + "/material";
+                        if (AssetDatabase.IsValidFolder(folder))
+                        {
+                            Object folderAsset = AssetDatabase.LoadAssetAtPath<Object>(folder);
+                            Selection.activeObject = folderAsset;
+                            EditorGUIUtility.PingObject(folderAsset);
+                        }
+                        else
+                            EditorUtility.DisplayDialog("EMD2Unity Materials",
+                                "No material folder yet. Click Extract Materials first.", "OK");
+                    }
                     EditorGUILayout.Space();
                     EditorGUILayout.LabelField("Generated Material Defaults", EditorStyles.boldLabel);
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("findNearbyTextures"), new GUIContent("Find DDS/PNG Textures Nearby"));
@@ -239,8 +253,8 @@ namespace MusafirEx.EMD2Unity
                             "Bind an exact local *_NO map to the selected *_CO texture, even without an EMAT reference. The *_NO must be imported as a Unity Normal Map."));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("linkSpecularMaps"), new GUIContent("Link Specular Textures (Opt-in)"));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("materialSmoothness"),
-                        new GUIContent("Smoothness (All Materials)",
-                            "0 = rough/matte, 1 = smooth/glossy. Applies to generated EMD materials on Apply/reimport."));
+                        new GUIContent("Smoothness (Generated Defaults)",
+                            "0 = rough/matte, 1 = smooth/glossy. Applied only to generated fallback material sub-assets. Edit extracted .mat assets directly."));
                     EditorGUILayout.HelpBox(
                         "Smoothness is shared by embedded materials generated from this EMD. " +
                         "Standard uses _Glossiness and _GlossMapScale; URP/HDRP Lit use _Smoothness. " +
