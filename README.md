@@ -18,6 +18,12 @@ This feature is independent of Bress2Unity, but follows its importer-owned sub-a
 
 **v0.6.2 looping:** Select the source `.pemt` and use **Per-Motion Loop Settings**. **Default Loop Time** is off (Once); each numeric Motion ID has a **Default / Once / Loop** setting. Use **Loop** for known repeating idle/walk/run animations, **Once** for attacks, hits, and death. For explicit Loop entries, optionally enable **Pose** (Unity's Loop Pose / `loopBlend`). Click **Apply** to regenerate the embedded clips; numeric Motion IDs and asset identifiers are preserved. The Inspector includes an ID filter and paging for large PEMT containers. Exporting a *new* standalone `.anim` inherits the same settings; already exported files are intentionally not overwritten. The Preview window starts with the selected Motion ID's Loop value but its on-screen Loop toggle is temporary. No looping flag is inferred from unverified PS3 binary fields, and Loop Pose does not guarantee visually seamless transitions.
 
+### EMD DDS normal-map preparation (v0.6.5)
+
+Unity 2022.3 imports compressed `.dds` using `IHVImageFormatImporter`, which does **not** expose the normal-map `TextureImporter.textureType` option. In earlier versions this meant clicking **Prepare Nearby _NO Textures as Normal Maps** could leave `*_NO.dds` unused even though the exact `*_CO.dds` and `*_NO.dds` pair was under the adjacent `model/textures` folder.
+
+In the EMD **Materials** tab, enable **Link Normal Textures**, then click **Prepare Nearby _NO Textures as Normal Maps**. The tool generates a separate `*_NO.png` alongside each loadable DDS normal source (without overwriting the DDS or any existing PNG), sets the PNG's Unity import type to **Normal Map**, and reimports the EMD. The exact-stem binder then chooses the prepared PNG after skipping raw DDS candidates. Original source game files remain intact. If the DDS cannot be read back or uses unusual PS3 normal packing, Console warns and rendered normal orientation must be checked visually.
+
 ### EMD normal map binding (v0.6.4)
 
 When **Link Normal Textures (Opt-in)** is enabled in the EMD source's **Materials** tab, EMD2Unity matches `*_NO` images by the exact selected diffuse `*_CO` basename (e.g. `ACL00body02_CO.dds` → `ACL00body02_NO.dds`). An EMAT reference is **not required** if the exact pair exists in the local textures folders. No unrelated/approximate normal texture is substituted. The Console reports how many material normals were actually linked and how many were missing, not prepared, unloadable or unsupported by the shader.
@@ -45,7 +51,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.6.4.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.6.5.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
