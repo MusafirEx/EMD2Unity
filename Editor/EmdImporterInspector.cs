@@ -20,13 +20,20 @@ namespace MusafirEx.EMD2Unity
                 EditorStyles.boldLabel);
             if (selectedEmd == null) return;
 
+            // Inspect the actual sub-assets attached to the SELECTED .emd.
+            // Materials only: no mesh, renderer or hierarchy references.
             EmdMaterialRegistry registry = null;
+            var actualMaterials = new System.Collections.Generic.HashSet<Material>();
             foreach (UnityEngine.Object asset in
                 AssetDatabase.LoadAllAssetsAtPath(selectedEmd.assetPath))
             {
-                registry = asset as EmdMaterialRegistry;
-                if (registry != null) break;
+                if (asset is Material importedMaterial)
+                    actualMaterials.Add(importedMaterial);
+                if (asset is EmdMaterialRegistry sourceRegistry)
+                    registry = sourceRegistry;
             }
+            EditorGUILayout.LabelField("Actual Material Sub-assets Under EMD",
+                actualMaterials.Count.ToString());
             if (registry == null || registry.generatedMaterials == null ||
                 registry.sourceMaterialNames == null ||
                 registry.generatedMaterials.Length != registry.sourceMaterialNames.Length)
@@ -44,7 +51,9 @@ namespace MusafirEx.EMD2Unity
             SerializedProperty external = serializedObject.FindProperty("externalMaterials");
             for (int i = 0; i < sourceCount; i++)
             {
-                if (registry.generatedMaterials[i] != null) generatedCount++;
+                if (registry.generatedMaterials[i] != null &&
+                    actualMaterials.Contains(registry.generatedMaterials[i]))
+                    generatedCount++;
                 if (external != null && i < external.arraySize &&
                     external.GetArrayElementAtIndex(i).objectReferenceValue != null)
                     linkedCount++;
@@ -55,6 +64,13 @@ namespace MusafirEx.EMD2Unity
                 generatedCount.ToString());
             EditorGUILayout.LabelField("External Material References",
                 linkedCount.ToString());
+            if (actualMaterials.Count != sourceCount)
+                EditorGUILayout.HelpBox(
+                    "The selected EMD contains " + actualMaterials.Count +
+                    " Material sub-assets, but its original material table declares " +
+                    sourceCount + " entries. The extraction uses the EMD material " +
+                    "table and will not substitute mesh references.",
+                    MessageType.Warning);
             if (sourceCount != generatedCount)
                 EditorGUILayout.HelpBox(
                     (sourceCount - generatedCount) +
@@ -78,7 +94,8 @@ namespace MusafirEx.EMD2Unity
                 EditorGUILayout.BeginHorizontal();
                 EditorGUILayout.LabelField(i.ToString("D3"), GUILayout.Width(48));
                 EditorGUILayout.LabelField(registry.sourceMaterialNames[i] ?? "");
-                EditorGUILayout.LabelField(registry.generatedMaterials[i] != null ?
+                EditorGUILayout.LabelField(registry.generatedMaterials[i] != null &&
+                    actualMaterials.Contains(registry.generatedMaterials[i]) ?
                     "Yes" : "Missing", GUILayout.Width(75));
                 bool hasExternal = external != null && i < external.arraySize &&
                     external.GetArrayElementAtIndex(i).objectReferenceValue != null;
@@ -101,14 +118,18 @@ namespace MusafirEx.EMD2Unity
                 report.AppendLine("EMD2Unity source material table: " +
                     selectedEmd.assetPath);
                 report.AppendLine("EMD entries: " + sourceCount +
-                    ", generated: " + generatedCount + ", linked external: " + linkedCount);
+                    ", actual material sub-assets: " + actualMaterials.Count +
+                    ", indexed generated: " + generatedCount +
+                    ", linked external: " + linkedCount);
                 for (int i = 0; i < sourceCount; i++)
                 {
                     bool hasExternal = external != null && i < external.arraySize &&
                         external.GetArrayElementAtIndex(i).objectReferenceValue != null;
                     report.Append(i.ToString("D3")).Append(" | ")
                         .Append(registry.sourceMaterialNames[i]).Append(" | generated=")
-                        .Append(registry.generatedMaterials[i] != null).Append(" | external=")
+                        .Append(registry.generatedMaterials[i] != null &&
+                            actualMaterials.Contains(registry.generatedMaterials[i]))
+                        .Append(" | external=")
                         .AppendLine(hasExternal.ToString());
                 }
                 EditorGUIUtility.systemCopyBuffer = report.ToString();
