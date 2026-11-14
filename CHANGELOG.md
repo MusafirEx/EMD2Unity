@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.6 — Extract and edit EMD materials as external .mat assets
+
+- Added **EMD > Materials > Extract Materials to model/material**. On explicit user action, this creates one standalone Unity `.mat` asset per source EMD material in the existing sibling `model/material/` folder (which may also contain original `.emat` files). Filenames contain the EMD basename, stable source material index and sanitized material name.
+- The importer serializes **External Materials (by Source Index)** references in the EMD import settings. After extraction and reimport, mesh renderers use the referenced editable `.mat` objects. These links use Unity object references so custom materials survive EMD reimport and asset renames/moves. Empty entries fall back to embedded generated materials.
+- Existing `.mat` files and manually linked external `.mat` assets are **never overwritten** or replaced by re-extraction. Materials can now be edited directly (shader, Normal Map, Smoothness, Metallic, render settings, etc.). Existing EMD `.emat`, `.emd` and source DDS textures are unaffected.
+- Embedded default material sub-assets remain available for compatibility and safe extraction. They are tagged by source material index, avoiding confusion when original materials share the same name. Changing importer smoothness or automatic texture options only rebuilds **generated defaults**; external edits remain authoritative.
+- Added **Select model/material Folder** button, external material slot list and extraction report. No `.mat` files are generated inside the EMD ScriptedImporter import callback, avoiding recursive asset creation. ScriptedImporter revision 22 reimports EMD assets.
+- Source-level verification only; Unity 2022.3 compilation, actual extraction and render assignment require testing after updating this Git package.
+
 ## 0.6.5 — Prepare DDS normal maps imported through IHVImageFormatImporter
 
 - Corrected **Materials → Prepare Nearby _NO Textures as Normal Maps** for DDS textures. Unity 2022.3 handles `.dds` with `IHVImageFormatImporter`, not `TextureImporter`; the old tool silently skipped them, leaving EMD imports at zero normal-map bindings even when exact `*_CO` / `*_NO` files were present under `model/textures`.
