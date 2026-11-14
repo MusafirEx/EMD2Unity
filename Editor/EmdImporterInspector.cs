@@ -188,7 +188,9 @@ namespace MusafirEx.EMD2Unity
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("useEmatTextureReferences"), new GUIContent("Read Companion EMAT Texture Names"));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("preferUniqueColourMap"),
                         new GUIContent("Prefer Referenced _CO for Diffuse"));
-                    EditorGUILayout.PropertyField(serializedObject.FindProperty("linkNormalMaps"), new GUIContent("Link Normal Textures (Opt-in)"));
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("linkNormalMaps"),
+                        new GUIContent("Link Normal Textures (Opt-in)",
+                            "Bind an exact local *_NO map to the selected *_CO texture, even without an EMAT reference. The *_NO must be imported as a Unity Normal Map."));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("linkSpecularMaps"), new GUIContent("Link Specular Textures (Opt-in)"));
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("materialSmoothness"),
                         new GUIContent("Smoothness (All Materials)",
@@ -214,6 +216,13 @@ namespace MusafirEx.EMD2Unity
                         if (selectedEmd != null)
                             EmdTextureBindingDiagnostics.DiagnosePath(selectedEmd.assetPath);
                     }
+                    EditorGUILayout.HelpBox(
+                        "Enabling Link Normal Textures does not automatically change texture import types. " +
+                        "Click Prepare Nearby _NO Textures as Normal Maps once if the Console " +
+                        "reports unprepared textures, then Apply. Exact local *_CO -> *_NO " +
+                        "pairs are used even when EMAT omits a normal reference. " +
+                        "Missing source maps and shaders without a normal slot cannot be repaired by this option.",
+                        MessageType.Info);
                     if (GUILayout.Button("Prepare Nearby _NO Textures as Normal Maps"))
                     {
                         var selectedImporter = target as EmdImporter;
