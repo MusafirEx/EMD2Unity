@@ -172,8 +172,20 @@ namespace MusafirEx.EMD2Unity
                 string targetPath = materialFolder + "/" + modelName + "_Mat_" +
                     i.ToString("D3") + "_" + safeName + ".mat";
 
-                // Reuse existing files instead of overwriting user-edited shader,
-                // maps, smoothness, colors, keywords, or render queue.
+                // A manually assigned external .mat may have been renamed or
+                // moved. Keep its GUID-backed reference on repeated extraction.
+                Material existingLink = externalMaterials[i];
+                string existingLinkPath = existingLink == null ? "" :
+                    AssetDatabase.GetAssetPath(existingLink);
+                if (!string.IsNullOrEmpty(existingLinkPath) &&
+                    existingLinkPath.EndsWith(".mat", StringComparison.OrdinalIgnoreCase))
+                {
+                    reused++;
+                    continue;
+                }
+
+                // Reuse files at the canonical destination, never overwrite
+                // shader, maps, smoothness, colors, keywords, or render queue.
                 Material targetMaterial = AssetDatabase.LoadAssetAtPath<Material>(targetPath);
                 if (targetMaterial != null)
                 {
