@@ -217,11 +217,13 @@ namespace MusafirEx.EMD2Unity
                             EmdTextureBindingDiagnostics.DiagnosePath(selectedEmd.assetPath);
                     }
                     EditorGUILayout.HelpBox(
-                        "Enabling Link Normal Textures does not automatically change texture import types. " +
-                        "Click Prepare Nearby _NO Textures as Normal Maps once if the Console " +
-                        "reports unprepared textures, then Apply. Exact local *_CO -> *_NO " +
-                        "pairs are used even when EMAT omits a normal reference. " +
-                        "Missing source maps and shaders without a normal slot cannot be repaired by this option.",
+                        "When *_NO is a DDS file, Unity uses IHVImageFormatImporter instead of " +
+                        "TextureImporter and cannot set the normal-map Texture Type directly. " +
+                        "Click Prepare Nearby _NO Textures as Normal Maps to generate a separate " +
+                        "*_NO.png normal-map companion (the original DDS is unchanged). " +
+                        "For PNG/TGA/etc, the action sets Texture Type = Normal Map. " +
+                        "After preparation click Apply; exact *_CO -> *_NO pairs are used " +
+                        "even when EMAT omits a normal reference. Verify shading visually.",
                         MessageType.Info);
                     if (GUILayout.Button("Prepare Nearby _NO Textures as Normal Maps"))
                     {
