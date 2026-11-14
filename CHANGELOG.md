@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.5 — Prepare DDS normal maps imported through IHVImageFormatImporter
+
+- Corrected **Materials → Prepare Nearby _NO Textures as Normal Maps** for DDS textures. Unity 2022.3 handles `.dds` with `IHVImageFormatImporter`, not `TextureImporter`; the old tool silently skipped them, leaving EMD imports at zero normal-map bindings even when exact `*_CO` / `*_NO` files were present under `model/textures`.
+- On explicit user action, the preparation tool now creates a **non-destructive sibling `*_NO.png`** from a loadable DDS via GPU texture readback. It imports the generated PNG as `TextureImporterType.NormalMap`. Original `.dds` files are unchanged and pre-existing PNG companions are never overwritten.
+- This feeds the existing deterministic exact-stem normal binder (which considers all local candidates rather than just DDS). It supports both `Assets/chr/ACL/ACL00/model/textures` and any equivalent EMD-relative `model/textures` layout.
+- Conversion can fail for unsupported GPU formats or texture sizes above 8192; the Console reports such failures. PS3 channel packing, tangent-space orientation, and final lighting still require visual verification. Preparation intentionally does not run during `.emd` import.
+- Bumped EMD ScriptedImporter revision to 21. Source-level verification only; confirm Unity 2022.3 compilation and material rendering after updating this Git package.
+
 ## 0.6.4 — EMD normal texture linking repair
 
 - Fixed **Link Normal Textures** being enabled but doing nothing when EMAT omitted an exact `*_NO` texture reference. When the chosen diffuse basename ends with `_CO`, the importer now searches only the local exact-stem `_NO` counterpart (for example `ACL00body02_CO` → `ACL00body02_NO`) in the model's supported nearby texture folders, regardless of whether EMAT lists it.
