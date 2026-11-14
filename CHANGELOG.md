@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.7 — Exact source EMD material count, independent of meshes
+
+- Material extraction now reads the importer-generated **EMD material table registry** by source Material Index. It does not use the mesh count, mesh name, renderer material arrays or mesh assignment count, and it does not re-parse geometry during extraction.
+- Exactly one external `.mat` is created or reused per original EMD Material Index, including distinct entries that share the same material name. Generated templates remain registered as source-indexed sub-assets under the EMD.
+- The **Materials** tab now shows the source EMD material count, generated material sub-asset count, and linked external material count, with 20-entry pages and a **Copy EMD Material Index Report** button. This makes missing generated materials visible without inspecting meshes.
+- Both extraction entry points now use the same source-index implementation and canonical `model/material/` folder; previously extracted or manually assigned materials are preserved.
+- EMD ScriptedImporter revision 23 triggers a registry rebuild after package update. Static source checks completed; material count for a given local EMD requires reimport and Unity validation.
+
 ## 0.6.6 — Extract and edit EMD materials as external .mat assets
 
 - Added **EMD > Materials > Extract Materials to model/material**. On explicit user action, this creates one standalone Unity `.mat` asset per source EMD material in the existing sibling `model/material/` folder (which may also contain original `.emat` files). Filenames contain the EMD basename, stable source material index and sanitized material name.
