@@ -24,7 +24,7 @@ namespace MusafirEx.EMD2Unity
         [Range(0, 6)] public int sourceChannel;
     }
 
-    [ScriptedImporter(21, "emd")]
+    [ScriptedImporter(22, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         // LegacySwapYZ preserves earlier imports. RotateMinus90X is a true
@@ -115,6 +115,128 @@ namespace MusafirEx.EMD2Unity
         [SerializeField] private bool linkSpecularMaps = false;
         [Tooltip("Uniform smoothness for all generated EMD materials (0 = rough/matte, 1 = glossy). Applies on import/reimport; material shaders without a smoothness property are unaffected.")]
         [SerializeField, Range(0f, 1f)] private float materialSmoothness = 0.5f;
+        // Per-source-material references to editable external .mat assets. These
+        // references persist in the EMD .meta and survive material renames/moves.
+        // Empty slots keep the original generated embedded material.
+        [SerializeField] private List<Material> externalMaterials = new List<Material>();
+        private const string SourceMaterialIndexTag = "EMD2Unity_SourceMaterialIndex";
+
+        // Explicit Inspector action only. Never create .mat assets from OnImportAsset:
+        // writing assets during a ScriptedImporter callback causes import loops.
+        internal void ExtractMaterialsToFolder(out int created, out int reused, out int failed)
+        {
+            created = 0;
+            reused = 0;
+            failed = 0;
+            if (string.IsNullOrEmpty(assetPath) ||
+                !assetPath.EndsWith(".emd", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Select a source .emd file to extract materials.");
+
+            // Parse with the SAME settings as the model import to preserve
+            // MaterialIndex order, including duplicate material names.
+            EmdDocument document = EmdParser.Parse(
+                File.ReadAllBytes(assetPath), recoverSupportedPolygons,
+                EffectivePreserveZeroUvWords, EffectiveAlignUvBlocksTo16,
+                EffectiveVertexColorsRgbaLast);
+            if (document.Materials.Count == 0)
+                throw new InvalidOperationException("The selected EMD has no materials to extract.");
+
+            string modelFolder = Path.GetDirectoryName(assetPath)?.Replace('\\', '/');
+            if (string.IsNullOrEmpty(modelFolder) || !AssetDatabase.IsValidFolder(modelFolder))
+                throw new DirectoryNotFoundException("Model directory not found for " + assetPath);
+            string materialFolder = modelFolder + "/material";
+            if (!AssetDatabase.IsValidFolder(materialFolder))
+            {
+                string guid = AssetDatabase.CreateFolder(modelFolder, "material");
+                if (string.IsNullOrEmpty(guid) ||
+                    !AssetDatabase.IsValidFolder(materialFolder))
+                    throw new IOException("Unable to create material folder: " + materialFolder);
+            }
+
+            Material[] embedded = AssetDatabase.LoadAllAssetsAtPath(assetPath)
+                .OfType<Material>().ToArray();
+            var used = new HashSet<Material>();
+            while (externalMaterials.Count < document.Materials.Count)
+                externalMaterials.Add(null);
+
+            string modelName = Path.GetFileNameWithoutExtension(assetPath);
+            for (int i = 0; i < document.Materials.Count; i++)
+            {
+                string originalName = document.Materials[i].Name;
+                if (string.IsNullOrWhiteSpace(originalName))
+                    originalName = "EMD_Material_" + i;
+                string safeName = Regex.Replace(originalName, @"[^A-Za-z0-9_-]+", "_")
+                    .Trim('_');
+                if (safeName.Length == 0) safeName = "Material";
+                if (safeName.Length > 48) safeName = safeName.Substring(0, 48);
+                string targetPath = materialFolder + "/" + modelName + "_Mat_" +
+                    i.ToString("D3") + "_" + safeName + ".mat";
+
+                // Reuse existing files instead of overwriting user-edited shader,
+                // maps, smoothness, colors, keywords, or render queue.
+                Material targetMaterial = AssetDatabase.LoadAssetAtPath<Material>(targetPath);
+                if (targetMaterial != null)
+                {
+                    externalMaterials[i] = targetMaterial;
+                    reused++;
+                    continue;
+                }
+                if (File.Exists(targetPath))
+                {
+                    failed++;
+                    Debug.LogWarning("EMD2Unity: cannot export material to existing non-Material asset " +
+                        targetPath + "; existing file was not modified.");
+                    continue;
+                }
+
+                Material source = externalMaterials[i];
+                if (source == null)
+                {
+                    // Every new EMD import stamps its generated sub-assets with
+                    // the numeric source MaterialIndex, independent of name/order.
+                    string sourceId = i.ToString();
+                    source = embedded.FirstOrDefault(m => m != null &&
+                        m.GetTag(SourceMaterialIndexTag, false, "") == sourceId);
+                }
+                if (source == null)
+                {
+                    // Compatibility fallback for stale imported EMDs that have
+                    // not yet regenerated their source material index tags.
+                    source = embedded.FirstOrDefault(m => m != null &&
+                        !used.Contains(m) &&
+                        string.Equals(m.name, originalName, StringComparison.Ordinal));
+                }
+                if (source == null)
+                {
+                    failed++;
+                    Debug.LogWarning("EMD2Unity: no embedded material available for " +
+                        modelName + " source material #" + i + " (" + originalName +
+                        "). Reimport the EMD and retry extraction.");
+                    continue;
+                }
+                used.Add(source);
+
+                Material clone = null;
+                try
+                {
+                    clone = new Material(source) { name = originalName };
+                    AssetDatabase.CreateAsset(clone, targetPath);
+                    externalMaterials[i] = clone;
+                    created++;
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    if (clone != null && !AssetDatabase.Contains(clone))
+                        UnityEngine.Object.DestroyImmediate(clone);
+                    Debug.LogWarning("EMD2Unity: could not extract material #" + i +
+                        " to " + targetPath + ": " + ex.Message);
+                }
+            }
+            // The Inspector calls SaveAndReimport afterwards to make renderers
+            // use these external references without touching the .mat contents.
+            EditorUtility.SetDirty(this);
+        }
 
         public override void OnImportAsset(AssetImportContext ctx)
         {
@@ -345,6 +467,8 @@ namespace MusafirEx.EMD2Unity
                     ?? Shader.Find("HDRP/Lit") ?? Shader.Find("Unlit/Texture");
                 if (shader == null) throw new InvalidOperationException("No compatible material shader found.");
                 Material mat = new Material(shader) { name = string.IsNullOrWhiteSpace(info.Name) ? "EMD_Material_" + i : info.Name };
+                // Stable mapping for extracting even duplicate-named submaterials.
+                mat.SetOverrideTag(SourceMaterialIndexTag, i.ToString());
                 if (findNearbyTextures)
                 {
                     string texName = info.TextureName;
@@ -533,7 +657,25 @@ namespace MusafirEx.EMD2Unity
                     mat.SetFloat("_Smoothness", smoothness);
                 if (mat.HasProperty("_GlossMapScale"))
                     mat.SetFloat("_GlossMapScale", smoothness);
-                materials[i] = mat;
+                Material linked = externalMaterials != null && i < externalMaterials.Count
+                    ? externalMaterials[i] : null;
+                if (linked != null)
+                {
+                    // Reference the editable external asset; do not copy any
+                    // imported defaults over user customizations on reimport.
+                    string linkedPath = AssetDatabase.GetAssetPath(linked);
+                    if (!string.IsNullOrEmpty(linkedPath) && linkedPath != ctx.assetPath)
+                    {
+                        ctx.DependsOnArtifact(linkedPath);
+                        materials[i] = linked;
+                    }
+                    else
+                        materials[i] = mat;
+                }
+                else
+                    materials[i] = mat;
+                // Keep stable generated subassets as extraction sources and
+                // fallback when an external material is unassigned/missing.
                 ctx.AddObjectToAsset("material_" + i, mat);
             }
 
