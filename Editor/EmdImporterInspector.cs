@@ -213,10 +213,10 @@ namespace MusafirEx.EMD2Unity
                                     " could not be extracted. Original .emat, DDS and .emd are unchanged.");
                                 selectedEmd.SaveAndReimport();
                                 EditorUtility.DisplayDialog("EMD2Unity Materials Extracted",
-                                    "Folder: model/material/\\nCreated: " + created +
-                                    "\\nReused (not overwritten): " + reused +
-                                    "\\nFailed: " + failed +
-                                    "\\n\\nEdit the new .mat files directly in Unity. " +
+                                    "Folder: model/material/\nCreated: " + created +
+                                    "\nReused (not overwritten): " + reused +
+                                    "\nFailed: " + failed +
+                                    "\n\nEdit the new .mat files directly in Unity. " +
                                     "This model now references the extracted materials.", "OK");
                             }
                             catch (System.Exception ex)
