@@ -24,7 +24,7 @@ namespace MusafirEx.EMD2Unity
         [Range(0, 6)] public int sourceChannel;
     }
 
-    [ScriptedImporter(19, "emd")]
+    [ScriptedImporter(20, "emd")]
     public sealed class EmdImporter : ScriptedImporter
     {
         // LegacySwapYZ preserves earlier imports. RotateMinus90X is a true
@@ -323,6 +323,13 @@ namespace MusafirEx.EMD2Unity
             GameObject root = new GameObject(name);
             root.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
 
+            // Count normal-link outcomes per source EMD so missing/incorrect
+            // TextureImporter settings are visible without flooding the Console.
+            int normalBoundCount = 0;
+            int normalUnpreparedCount = 0;
+            int normalUnloadableCount = 0;
+            int normalShaderUnsupportedCount = 0;
+            int normalMissingCount = 0;
             var materials = new Material[doc.Materials.Count];
             for (int i = 0; i < materials.Length; ++i)
             {
@@ -427,31 +434,66 @@ namespace MusafirEx.EMD2Unity
                         string stem = texName.Substring(0, texName.Length - 3);
                         if (linkNormalMaps)
                         {
+                            // EMAT is optional in some character archives. Match a
+                            // local normal map by the EXACT selected colour-map stem,
+                            // never by an unrelated material or the first *_NO file.
                             string normalName = stem + "_NO";
-                            if (ematTextures.Any(t => t.Equals(normalName, StringComparison.OrdinalIgnoreCase)))
+                            List<string> candidates = FindTextureCandidates(ctx.assetPath, normalName);
+                            if (candidates.Count == 0)
                             {
-                                string normalPath = FindTexture(ctx.assetPath, normalName);
-                                if (normalPath != null)
+                                normalMissingCount++;
+                            }
+                            else
+                            {
+                                bool linked = false;
+                                bool needsPreparation = false;
+                                bool unsupportedShader = false;
+                                foreach (string normalPath in candidates)
                                 {
                                     ctx.DependsOnSourceAsset(normalPath);
-                                    var importer = AssetImporter.GetAtPath(normalPath) as TextureImporter;
-                                    // Unity normal-map packing requires an imported Normal map.
-                                    // Do not assign raw DDS as a normal map: it renders incorrectly.
-                                    if (importer != null && importer.textureType == TextureImporterType.NormalMap)
+                                    var textureImporter = AssetImporter.GetAtPath(normalPath) as TextureImporter;
+                                    // Never connect a raw colour-imported DDS to a
+                                    // tangent-space normal slot: Unity must first
+                                    // import it as TextureImporterType.NormalMap.
+                                    if (textureImporter == null ||
+                                        textureImporter.textureType != TextureImporterType.NormalMap)
                                     {
-                                        Texture2D normal = AssetDatabase.LoadAssetAtPath<Texture2D>(normalPath);
-                                        if (normal != null)
-                                        {
-                                            if (mat.HasProperty("_BumpMap")) mat.SetTexture("_BumpMap", normal);
-                                            if (mat.HasProperty("_NormalMap")) mat.SetTexture("_NormalMap", normal);
-                                            mat.EnableKeyword("_NORMALMAP");
-                                        }
+                                        needsPreparation = true;
+                                        continue;
                                     }
-                                    else
-                                        ctx.LogImportWarning("EMD normal texture '" + normalPath +
-                                            "' is not imported as a Normal map. In the EMD Materials tab, click " +
-                                            "'Prepare Nearby _NO Textures as Normal Maps' to fix this.");
+                                    Texture2D normal = AssetDatabase.LoadAssetAtPath<Texture2D>(normalPath);
+                                    if (normal == null) continue;
+
+                                    bool assigned = false;
+                                    if (mat.HasProperty("_BumpMap"))
+                                    {
+                                        mat.SetTexture("_BumpMap", normal); // Built-in Standard / URP Lit
+                                        assigned = true;
+                                    }
+                                    if (mat.HasProperty("_NormalMap"))
+                                    {
+                                        mat.SetTexture("_NormalMap", normal); // HDRP Lit
+                                        assigned = true;
+                                    }
+                                    if (!assigned)
+                                    {
+                                        unsupportedShader = true;
+                                        break;
+                                    }
+                                    if (mat.HasProperty("_BumpScale"))
+                                        mat.SetFloat("_BumpScale", 1f);
+                                    if (mat.HasProperty("_NormalScale"))
+                                        mat.SetFloat("_NormalScale", 1f);
+                                    mat.EnableKeyword("_NORMALMAP");
+                                    if (mat.HasProperty("_NormalMap"))
+                                        mat.EnableKeyword("_NORMALMAP_TANGENT_SPACE");
+                                    linked = true;
+                                    break;
                                 }
+                                if (linked) normalBoundCount++;
+                                else if (unsupportedShader) normalShaderUnsupportedCount++;
+                                else if (needsPreparation) normalUnpreparedCount++;
+                                else normalUnloadableCount++;
                             }
                         }
                         if (linkSpecularMaps)
@@ -493,6 +535,24 @@ namespace MusafirEx.EMD2Unity
                     mat.SetFloat("_GlossMapScale", smoothness);
                 materials[i] = mat;
                 ctx.AddObjectToAsset("material_" + i, mat);
+            }
+
+            if (findNearbyTextures && linkNormalMaps)
+            {
+                string summary = "EMD2Unity normal map binding for " + name + ": " +
+                    normalBoundCount + " linked, " +
+                    normalUnpreparedCount + " need Normal Map import preparation, " +
+                    normalUnloadableCount + " files could not load, " +
+                    normalShaderUnsupportedCount + " shader(s) lack a normal slot, " +
+                    normalMissingCount + " materials have no exact local *_NO match. " +
+                    "Matching uses the selected *_CO texture stem even without an EMAT reference.";
+                if (normalUnpreparedCount > 0 || normalUnloadableCount > 0 ||
+                    normalShaderUnsupportedCount > 0 || normalBoundCount == 0)
+                    ctx.LogImportWarning(summary +
+                        " If the matching *_NO exists, use Materials > " +
+                        "Prepare Nearby _NO Textures as Normal Maps, then Apply.");
+                else
+                    Debug.Log(summary);
             }
 
             Transform[] bones = new Transform[importSkeleton ? doc.Bones.Count : 0];
