@@ -1,9 +1,9 @@
 {
   "name": "com.musafirex.emd2unity",
   "displayName": "EMD2Unity - Kamen Rider PS3 EMD Importer",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "unity": "2022.3",
-  "description": "PS3 EMD importer and PEMT Motion ID animation containers with per-Motion-ID loop controls, EMD smoothness and normal map binding, bound and unbound clips, preview/export, STG DDS audit and SEQ/CCM inspectors.",
+  "description": "PS3 EMD importer and PEMT Motion ID animation containers with per-Motion-ID loop controls, editable extracted EMD materials, smoothness and normal map binding, bound and unbound clips, preview/export, STG DDS audit and SEQ/CCM inspectors.",
   "keywords": [
     "kamen-rider",
     "emd",
