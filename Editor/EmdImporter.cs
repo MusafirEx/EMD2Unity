@@ -153,9 +153,12 @@ namespace MusafirEx.EMD2Unity
                     throw new IOException("Unable to create material folder: " + materialFolder);
             }
 
+            // Only EMD-generated material sub-assets may be used as extraction
+            // templates. Never inspect MeshRenderer, SkinnedMeshRenderer,
+            // MeshFilter, mesh names, or material assignments on mesh objects.
+            // The source EMD material table and its numeric index are authoritative.
             Material[] embedded = AssetDatabase.LoadAllAssetsAtPath(assetPath)
                 .OfType<Material>().ToArray();
-            var used = new HashSet<Material>();
             while (externalMaterials.Count < document.Materials.Count)
                 externalMaterials.Add(null);
 
@@ -201,23 +204,13 @@ namespace MusafirEx.EMD2Unity
                     continue;
                 }
 
-                Material source = externalMaterials[i];
-                if (source == null)
-                {
-                    // Every new EMD import stamps its generated sub-assets with
-                    // the numeric source MaterialIndex, independent of name/order.
-                    string sourceId = i.ToString();
-                    source = embedded.FirstOrDefault(m => m != null &&
-                        m.GetTag(SourceMaterialIndexTag, false, "") == sourceId);
-                }
-                if (source == null)
-                {
-                    // Compatibility fallback for stale imported EMDs that have
-                    // not yet regenerated their source material index tags.
-                    source = embedded.FirstOrDefault(m => m != null &&
-                        !used.Contains(m) &&
-                        string.Equals(m.name, originalName, StringComparison.Ordinal));
-                }
+                // Every generated EMD sub-asset carries its source MaterialIndex.
+                // Never infer a match from names: duplicate source material names
+                // are legal and a mesh name or renderer assignment is not evidence.
+                // For legacy untagged EMD imports, reimport before extraction.
+                string sourceId = i.ToString();
+                Material source = embedded.FirstOrDefault(m => m != null &&
+                    m.GetTag(SourceMaterialIndexTag, false, "") == sourceId);
                 if (source == null)
                 {
                     failed++;
@@ -226,8 +219,6 @@ namespace MusafirEx.EMD2Unity
                         "). Reimport the EMD and retry extraction.");
                     continue;
                 }
-                used.Add(source);
-
                 Material clone = null;
                 try
                 {
