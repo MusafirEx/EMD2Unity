@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1 — Fix official vgmstream-cli installer validation
+
+- Fixed reported Unity 2022.3 `IOException: vgmstream-cli -V did not return valid version information` after downloading the official decoder. Upstream `cli/vgmstream_cli.c` prints legitimate JSON from `-V` and then follows its `goto fail` path, returning exit code 1. Our installer incorrectly required exit code 0.
+- CLI verification now uses Unity `JsonUtility` to confirm nonempty `version` in `-V` JSON regardless of exit code; empty/invalid output still fails with executable path, exit code, and relevant stdout/stderr diagnostics. Pipes are read asynchronously with a 10-second timeout.
+- Added **Tools > EMD2Unity > MSF > Run vgmstream Version JSON Self-Test**. Install remains explicit user action; `Library/EMD2Unity` staging remains non-destructive. Retry **Install / Update Official vgmstream-cli** after updating the UPM package to validate and finish installation.
+- Source reviewed against vgmstream upstream `cli/vgmstream_cli.c` (`case 'V'`) and `cli/vgmstream_cli_utils.c` (`print_json_version`). Unity compile and real MSF playback require re-testing after the new Git package is installed.
+
 ## 0.7.0 — Official vgmstream integration for MSF AudioClip import
 
 - Integrated **vgmstream/vgmstream** as the recommended Sony PS3 MSF decoder, while retaining the existing C# PCM16/PS ADPCM fallback. Supports upstream ATRAC3, MPEG and other MSF codec handling via `vgmstream-cli`, rather than reimplementing proprietary codecs.
