@@ -237,6 +237,44 @@ namespace MusafirEx.EMD2Unity
             }
         }
 
+        // Read JSON metadata using the same upstream decoder that will
+        // extract the audio. This can show codec, subsong count and loop
+        // sample points before generating .wav output.
+        internal static string InspectMsfWithCli(string inputPath, string overridePath)
+        {
+            string cli = ResolveExecutable(overridePath);
+            EnsureCliWorks(cli);
+            string input = Path.GetFullPath(inputPath);
+            if (!File.Exists(input))
+                throw new FileNotFoundException("Selected MSF could not be read.", input);
+            using (Process process = Process.Start(new ProcessStartInfo
+            {
+                FileName = cli,
+                Arguments = "-I \"" + input.Replace("\"", "") + "\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true
+            }))
+            {
+                if (process == null)
+                    throw new IOException("Failed to start vgmstream-cli.");
+                var output = process.StandardOutput.ReadToEndAsync();
+                if (!process.WaitForExit(15000))
+                {
+                    try { process.Kill(); } catch { /* process has exited */ }
+                    throw new TimeoutException("vgmstream-cli -I metadata request timed out.");
+                }
+                if (process.ExitCode != 0)
+                    throw new InvalidDataException(
+                        "vgmstream-cli did not recognize the selected MSF (exit " +
+                        process.ExitCode + ").");
+                string json = output.GetAwaiter().GetResult();
+                if (string.IsNullOrWhiteSpace(json))
+                    throw new InvalidDataException("vgmstream-cli returned empty metadata.");
+                return json.Length > 100000 ? json.Substring(0, 100000) : json;
+            }
+        }
+
         [MenuItem("Tools/EMD2Unity/MSF/Validate Configured vgmstream-cli")]
         internal static void ValidateConfigured()
         {
