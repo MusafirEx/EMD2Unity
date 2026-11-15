@@ -326,6 +326,23 @@ namespace MusafirEx.EMD2Unity
             }
         }
 
+        [MenuItem("Tools/EMD2Unity/MSF/Run vgmstream Version JSON Self-Test")]
+        private static void SelfTestVersionValidation()
+        {
+            string expected = "{\"version\":\"r2168\",\"extensions\":{\"vgm\":[\"msf\"]}}";
+            bool valid = IsValidVersionJson(expected);
+            bool rejectsBlank = !IsValidVersionJson("");
+            bool rejectsError = !IsValidVersionJson("missing DLL dependency");
+            bool rejectsNoVersion = !IsValidVersionJson("{\"extensions\":{}}");
+            if (valid && rejectsBlank && rejectsError && rejectsNoVersion)
+                UnityEngine.Debug.Log(
+                    "EMD2Unity MSF: vgmstream version JSON self-test PASS " +
+                    "(upstream -V exit code intentionally not required).");
+            else
+                UnityEngine.Debug.LogError(
+                    "EMD2Unity MSF: vgmstream version JSON self-test FAILED.");
+        }
+
         [MenuItem("Tools/EMD2Unity/MSF/Validate Configured vgmstream-cli")]
         internal static void ValidateConfigured()
         {
