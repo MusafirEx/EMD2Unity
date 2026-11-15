@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.9 — Sony MSF audio importer with AudioClip child
+
+- Added a Unity 2022.3 **ScriptedImporter** for PS3 Sony \`.msf\` files. Selecting an \`.msf\` opens its audio metadata and decoder configuration; on a successful decode it generates an \`AudioClip\` child beneath the original \`.msf\` in the Unity Project window.
+- Reads and validates the big-endian MSF header: magic/version, codec, channel count, payload size, sample rate, flags, and loop offsets. Built-in C# decoder supports PCM16 BE (codec 0), PCM16 LE (codec 1), and PS ADPCM (codec 3).
+- ATRAC3 codecs 4–6 and MPEG/MP3 codec 7 can be decoded via a **separately installed vgmstream-cli** tool. Configure it for one asset in the Inspector, or set the shared editor path using **Tools > EMD2Unity > MSF > Set Default vgmstream-cli Path**. No third-party executable is bundled, installed or downloaded automatically.
+- The importer creates a metadata TextAsset as the main asset, and a decoded \`AudioClip\` as a stable-ID \`audio_clip\` sub-asset. Unsupported codecs remain inspectable and show a warning rather than falsely producing silence. Loop markers are informational; AudioSource looping must be configured separately.
+- Because some Unity versions have trouble persisting procedurally generated AudioClip PCM in ScriptedImporter sub-assets, the Inspector provides **Export Native WAV (next to MSF)** as a safe alternative. This creates a unique-named WAV next to the MSF and uses Unity's native AudioClip importer, without changing the MSF.
+- Added **Tools > EMD2Unity > MSF > Run Decoder Self-Test** for PCM16, PS ADPCM and WAV decoding, plus **Validate Selected MSF AudioClip** to check that the imported clip retains readable samples. Actual Unity compile/import/persistence and the selected \`ACL_ACCEL.msf\` codec remain to be verified.
+- Import has safety limits (30 million interleaved decoded samples, 60-second external decoder timeout). Audio data is never overwritten; WAV export only occurs on an explicit button click.
+
 ## 0.6.8 — Fix Unity 2022 EMD material extraction compilation
 
 - Added missing Unity `.meta` GUID files for `EmdMaterialRegistry.cs` and `EmdMaterialExtraction.cs`, so the Git UPM package can include these scripts in `MusafirEx.EMD2Unity.Editor` compilation (CS0246).
