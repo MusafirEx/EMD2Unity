@@ -214,10 +214,37 @@ namespace MusafirEx.EMD2Unity
             }
         }
 
+        // Official vgmstream-cli -V deliberately prints version JSON then
+        // returns through parse_config's 'fail' label (EXIT_FAILURE=1).
+        // This is an upstream CLI quirk, not a decoder/installation failure.
+        // Validate the JSON contents rather than demanding exit code zero.
+        [Serializable]
+        private sealed class CliVersion
+        {
+            public string version;
+        }
+
+        internal static bool IsValidVersionJson(string output)
+        {
+            if (string.IsNullOrWhiteSpace(output)) return false;
+            try
+            {
+                string trimmed = output.Trim();
+                if (!trimmed.StartsWith("{", StringComparison.Ordinal) ||
+                    !trimmed.EndsWith("}", StringComparison.Ordinal))
+                    return false;
+                CliVersion parsed = JsonUtility.FromJson<CliVersion>(trimmed);
+                return parsed != null && !string.IsNullOrWhiteSpace(parsed.version);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         internal static void EnsureCliWorks(string path)
         {
-            if (string.IsNullOrWhiteSpace(path) ||
-                !File.Exists(path))
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
                 throw new FileNotFoundException(
                     "Cannot find vgmstream-cli executable.", path);
 
@@ -227,16 +254,37 @@ namespace MusafirEx.EMD2Unity
                 Arguments = "-V",
                 CreateNoWindow = true,
                 UseShellExecute = false,
-                RedirectStandardOutput = true
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
             }))
             {
                 if (process == null)
                     throw new IOException("Could not launch vgmstream-cli.");
-                string output = process.StandardOutput.ReadToEnd();
-                if (!process.WaitForExit(10000) || process.ExitCode != 0 ||
-                    string.IsNullOrWhiteSpace(output))
-                    throw new IOException(
-                        "vgmstream-cli -V did not return valid version information.");
+
+                // Read pipes asynchronously to avoid blocking on verbose errors,
+                // e.g. missing native DLL dependencies.
+                var stdoutTask = process.StandardOutput.ReadToEndAsync();
+                var stderrTask = process.StandardError.ReadToEndAsync();
+                if (!process.WaitForExit(10000))
+                {
+                    try { process.Kill(); } catch (InvalidOperationException) { }
+                    throw new TimeoutException(
+                        "vgmstream-cli -V did not finish within 10 seconds: " + path);
+                }
+
+                string stdout = stdoutTask.GetAwaiter().GetResult();
+                string stderr = stderrTask.GetAwaiter().GetResult();
+                if (IsValidVersionJson(stdout)) return;
+
+                string detail = string.IsNullOrWhiteSpace(stderr) ?
+                    (string.IsNullOrWhiteSpace(stdout) ?
+                        "(no output; check VC++ runtime / bundled DLL dependencies)" :
+                        stdout.Trim()) : stderr.Trim();
+                if (detail.Length > 700) detail = detail.Substring(0, 700);
+                throw new IOException(
+                    "vgmstream-cli -V did not produce a valid version JSON. " +
+                    "ExitCode=" + process.ExitCode + ", executable=" + path +
+                    ", details=" + detail);
             }
         }
 
