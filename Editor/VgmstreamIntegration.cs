@@ -31,12 +31,15 @@ namespace MusafirEx.EMD2Unity
 
         internal static string ResolveExecutable(string perAssetPath)
         {
+            // Explicit per-file override wins. Otherwise prefer the CURRENT
+            // project's installed decoder to avoid stale EditorPrefs references
+            // pointing into another Unity project's Library directory.
             if (!string.IsNullOrWhiteSpace(perAssetPath))
                 return perAssetPath.Trim();
-            string shared = SharedExecutable;
-            if (!string.IsNullOrWhiteSpace(shared))
-                return shared.Trim();
-            return FindCli(ReleaseFolder);
+            string installed = FindCli(ReleaseFolder);
+            if (!string.IsNullOrWhiteSpace(installed))
+                return installed;
+            return SharedExecutable.Trim();
         }
 
         internal static string FindCli(string directory)
