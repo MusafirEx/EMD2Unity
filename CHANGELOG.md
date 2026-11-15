@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0 — Official vgmstream integration for MSF AudioClip import
+
+- Integrated **vgmstream/vgmstream** as the recommended Sony PS3 MSF decoder, while retaining the existing C# PCM16/PS ADPCM fallback. Supports upstream ATRAC3, MPEG and other MSF codec handling via `vgmstream-cli`, rather than reimplementing proprietary codecs.
+- Added **MSF Inspector > Install / Update Official vgmstream-cli (r2168)** and **Tools > EMD2Unity > MSF > Install Official vgmstream-cli (r2168)**. With explicit user confirmation, the editor downloads the platform-specific upstream GitHub release archive (`vgmstream-win64.zip` for Windows, corresponding Linux/macOS archive for other editors).
+- The executable and dependencies are extracted under the **project's Library/EMD2Unity/vgmstream/r2168/** folder, NEVER bundled in UPM or copied under Assets. An official release URL, limits on ZIP size/entries, path traversal checks, and a `vgmstream-cli -V` sanity check protect the installer. Download occurs **only** on button click, not during asset imports.
+- Once installed, MSF importers resolve the executable automatically (shared EditorPrefs path, or installed Library path) and prefer vgmstream output. Per-MSF executable overrides are still supported. Import of a newly decoded `.msf` generates an `AudioClip` subasset beneath the source and retains `*_MSF_Info` metadata.
+- Added **Inspect Selected MSF via vgmstream (-I)** to retrieve upstream codec, loop and other JSON metadata without having to manually run a CLI in PowerShell.
+- MSF importer revision 2 triggers reimport. All original source game assets remain untouched; **Export Native WAV** remains available if Unity cannot persist dynamically created AudioClip PCM. No claims of live Unity 2022.3 compilation or real `ACL_ACCEL.msf` playback until local validation.
+- Upstream project and license: https://github.com/vgmstream/vgmstream and https://github.com/vgmstream/vgmstream/blob/master/COPYING (ISC-style open license, no native binaries redistributed here).
+
 ## 0.6.9 — Sony MSF audio importer with AudioClip child
 
 - Added a Unity 2022.3 **ScriptedImporter** for PS3 Sony `.msf` files. Selecting an `.msf` opens its audio metadata and decoder configuration; on a successful decode it generates an `AudioClip` child beneath the original `.msf` in the Unity Project window.
