@@ -4,6 +4,26 @@ Native **Unity 2022.3+** Editor package for experimenting with PS3 Kamen Rider *
 
 > **Experimental:** The Editor assembly was previously compiled in Unity 2022.3.62f3. Version 0.4.3 adds an evidence-only CCM-to-PEMT Motion ID cross-reference panel. Version 0.4.2 added a read-only CCM Inspector/Browser for 0x80-byte combo records. Version 0.4.1 added a read-only SEQ Inspector/Browser for big-endian header words, referenced resource strings and raw byte-marker counts (without guessing VM opcodes). Version 0.4.0 added in-Editor PEMT Animation Preview with Play/Pause/Stop, scrubbing, orbit and zoom. Version 0.3.7 adds optional partial recovery of supported polygon records and detailed vertex buffer diagnostics for stage EMDs. Version 0.3.6 supported verifiable nonstandard triangle counts or trailing padding in EMD stage index buffers. Version 0.3.5 added 28-byte UV/color-record support for stage EMD models and flags imported EMD assets containing no renderable geometry. Version 0.3.4 adds batch export of all PEMT motions with transform keys to separate .anim files. The decoder is the same as the working single-motion export. Version 0.3.3 made PEMT Inspector controls interactive when selecting a .pemt source file. The previous UI was attached to the generated ScriptableObject, which Unity displays read-only. A separate PEMT Motion Browser window is also available. The EMD model importer remains unchanged from v0.1.5. Unity rendering, rig and shader equivalence remain pending. It may require fixes for particular models.
 
+### Bulk Export MSF → WAV (v0.7.2)
+
+Use **Tools > EMD2Unity > MSF > Bulk Export MSF to WAV...**, or right-click an **Assets** folder in Unity's Project window and choose **EMD2Unity > MSF > Bulk Export MSF to WAV**. Select or browse a folder under `Assets/`, for example `Assets/Sound/SSE`, and click **Rescan** to preview how many `.msf` files are inside, including every nested subfolder. Click **Export All MSF to WAV**, confirm the counts, and Unity will convert each file *in its original location*.
+
+Example:
+
+```text
+Assets/Sound/SSE/
+├── ACL_SSE/
+│   ├── ACL_ACCEL.msf
+│   └── ACL_ACCEL.wav        ← generated next to MSF
+└── GST_SSE/
+    ├── GST_WARP.msf
+    └── GST_WARP.wav         ← generated next to MSF
+```
+
+**Existing WAVs are always skipped** (not overwritten). Source `.msf` files are never modified. Individual failures do not abort the entire batch; cancel via the progress window between files. A result summary displays exported, existing/skipped, failed and cancelled counts; individual conversion failures are logged to Unity Console.
+
+For ATRAC3 or MPEG/MP3 MSFs, install and configure the official [vgmstream-cli](https://github.com/vgmstream/vgmstream) first using the MSF Inspector or **Tools > EMD2Unity > MSF > Install Official vgmstream-cli (r2168)**. PCM16 and PlayStation ADPCM can use the built-in decoder. WAVs are first decoded into `Library/EMD2Unity/MsfWavStaging/` and only moved into their respective source folders once validated, followed by one Unity AssetDatabase refresh. WAVs are native Unity AudioClip assets; no external decoder is required for runtime playback.
+
 ### Sony MSF AudioClip importer (v0.7.1)
 
 **Installer fix:** The official `vgmstream-cli -V` can print valid JSON even when its process exit code is 1. EMD2Unity now checks the version JSON instead of rejecting that exit code. If you previously encountered `vgmstream-cli -V did not return valid version information`, update EMD2Unity to v0.7.1 and click **Install / Update Official vgmstream-cli (r2168)** again. For troubleshooting, run **Tools > EMD2Unity > MSF > Run vgmstream Version JSON Self-Test**, then **Validate Configured vgmstream-cli**.
@@ -79,7 +99,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.7.1.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.7.2.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
