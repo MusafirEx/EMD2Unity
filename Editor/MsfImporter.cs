@@ -333,6 +333,27 @@ namespace MusafirEx.EMD2Unity
             }
             if (GUILayout.Button("Validate vgmstream-cli"))
                 VgmstreamIntegration.ValidateConfigured();
+            if (GUILayout.Button("Inspect Selected MSF via vgmstream (-I)"))
+            {
+                try
+                {
+                    string metadata = VgmstreamIntegration.InspectMsfWithCli(
+                        importer.assetPath, importer.VgmstreamCliPath);
+                    Debug.Log("EMD2Unity vgmstream MSF metadata: " +
+                        importer.assetPath + "\n" + metadata);
+                    EditorUtility.DisplayDialog("vgmstream MSF Metadata",
+                        metadata.Length > 2000 ? metadata.Substring(0, 2000) +
+                        "... (full report in Console)" : metadata, "OK");
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning("EMD2Unity MSF metadata inspection: " +
+                        ex.Message);
+                    EditorUtility.DisplayDialog("MSF Metadata Inspection",
+                        ex.Message, "OK");
+                }
+                GUIUtility.ExitGUI();
+            }
 
             EditorGUILayout.PropertyField(serializedObject.FindProperty("preferVgmstream"),
                 new GUIContent("Prefer vgmstream-cli (when configured)"));
