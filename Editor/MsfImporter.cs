@@ -11,18 +11,16 @@ using UnityEngine;
 
 namespace MusafirEx.EMD2Unity
 {
-    [ScriptedImporter(1, "msf")]
+    [ScriptedImporter(2, "msf")]
     public sealed class MsfImporter : ScriptedImporter
     {
         [SerializeField] private bool preferVgmstream = true;
         [SerializeField] private string vgmstreamCliPath = "";
-        private const string GlobalCliPathKey = "MusafirEx.EMD2Unity.MSF.DefaultVgmstreamCli";
-        internal static string SharedCliPath => EditorPrefs.GetString(GlobalCliPathKey, "");
+        internal static string SharedCliPath => VgmstreamIntegration.SharedExecutable;
 
         internal bool PreferVgmstream => preferVgmstream;
         internal string VgmstreamCliPath => vgmstreamCliPath;
-        internal string EffectiveCliPath => string.IsNullOrWhiteSpace(vgmstreamCliPath)
-            ? SharedCliPath : vgmstreamCliPath.Trim();
+        internal string EffectiveCliPath => VgmstreamIntegration.ResolveExecutable(vgmstreamCliPath);
 
         private MsfAudioData Decode(byte[] source, MsfHeader header,
             Action<string> warn)
@@ -96,7 +94,7 @@ namespace MusafirEx.EMD2Unity
                     ": " + ex.Message;
                 ctx.LogImportWarning(message);
                 info.AppendLine("AudioClip not generated: " + ex.Message);
-                info.AppendLine("For ATRAC3/MPEG, configure a local vgmstream-cli executable " +
+                info.AppendLine("For ATRAC3/MPEG, click Install Official vgmstream-cli " +
                     "in the MSF Inspector, then Apply.");
             }
 
@@ -291,17 +289,57 @@ namespace MusafirEx.EMD2Unity
                 "Import a Sony PS3 MSF file as an expandable asset with an AudioClip " +
                 "child. Managed decoding supports PCM16 BE/LE and PS ADPCM. " +
                 "ATRAC3 and MPEG/MP3 need a separately installed vgmstream-cli. " +
-                "No executable is bundled or downloaded. The original MSF is unchanged. " +
-                "Set a shared decoder with Tools > EMD2Unity > MSF > " +
-                "Set Default vgmstream-cli Path, or override it per MSF below.",
+                "No executable is bundled or downloaded during import. " +
+                "Click Install Official vgmstream-cli to download the official " +
+                "vgmstream/vgmstream release (opt-in), or set a manual executable. " +
+                "The original MSF is unchanged.",
                 MessageType.Info);
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Official vgmstream Integration",
+                EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox(
+                "Official source: github.com/vgmstream/vgmstream | " +
+                "Release: " + VgmstreamIntegration.ReleaseTag + ". " +
+                "The decoder is installed in the project Library folder " +
+                "only when you explicitly click Install. " +
+                "MSF/ATRAC3/MPEG playback uses vgmstream-cli as an external " +
+                "Editor process, not a managed reimplementation.",
+                MessageType.Info);
+            if (GUILayout.Button("Install / Update Official vgmstream-cli (" +
+                VgmstreamIntegration.ReleaseTag + ")", GUILayout.Height(26)))
+            {
+                serializedObject.ApplyModifiedProperties();
+                try
+                {
+                    string installed = VgmstreamIntegration.InstallFromOfficialRelease();
+                    if (!string.IsNullOrWhiteSpace(installed))
+                    {
+                        EditorUtility.DisplayDialog("vgmstream Installed",
+                            "Decoder installed and configured:\n" + installed +
+                            "\n\nThe MSF will now be reimported to create the AudioClip child.",
+                            "OK");
+                        AssetDatabase.ImportAsset(importer.assetPath,
+                            ImportAssetOptions.ForceUpdate);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogException(ex);
+                    EditorUtility.DisplayDialog("vgmstream Install Failed",
+                        ex.Message, "OK");
+                }
+                GUIUtility.ExitGUI();
+            }
+            if (GUILayout.Button("Validate vgmstream-cli"))
+                VgmstreamIntegration.ValidateConfigured();
 
             EditorGUILayout.PropertyField(serializedObject.FindProperty("preferVgmstream"),
                 new GUIContent("Prefer vgmstream-cli (when configured)"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("vgmstreamCliPath"),
-                new GUIContent("vgmstream-cli Executable",
-                    "Absolute path to vgmstream-cli.exe, or a command on PATH. " +
-                    "Set this per asset to keep imports reproducible."));
+                new GUIContent("vgmstream-cli Executable (optional override)",
+                    "Leave empty to use the shared or officially installed decoder. " +
+                    "Set an absolute path to override this one MSF."));
             if (importer != null)
                 EditorGUILayout.LabelField("Effective Decoder Path",
                     string.IsNullOrWhiteSpace(importer.EffectiveCliPath) ?
