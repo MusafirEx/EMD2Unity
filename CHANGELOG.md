@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.2 — Recursive Bulk MSF → WAV folder export
+
+- Added **Tools > EMD2Unity > MSF > Bulk Export MSF to WAV...** and an **Assets > EMD2Unity > MSF > Bulk Export MSF to WAV** context menu for folders in the Unity Project window.
+- Choose any folder under `Assets/`; the tool recursively finds every `.msf` using Unity AssetDatabase regardless of importer/main-object type. The tool displays total MSFs, existing WAVs and candidate exports before asking for explicit confirmation.
+- Each MSF exports to the **same directory as the source**, changing only its suffix (e.g. `Assets/Sound/SSE/ACL_SSE/ACL_ACCEL.msf` → `Assets/Sound/SSE/ACL_SSE/ACL_ACCEL.wav`). Subfolder structure is retained; pre-existing WAV files are **skipped**, never overwritten or renamed. Original MSFs are never changed.
+- Uses the configured official `vgmstream-cli` decoder directly to stream conversion into a unique WAV staging file in `Library/EMD2Unity/MsfWavStaging/`. If unavailable or decoding fails, managed PCM16/PS ADPCM decoding is attempted. The final WAV is validated and moved to its target filename only after successful output. No intermediate WAVs are imported as Unity assets.
+- Includes cancellable progress per file, skipped/exported/failed/cancelled counters, a Console report including individual errors and a summary in the window. After exporting, all newly created WAVs are imported into Unity in a **single** AssetDatabase refresh using Unity's native AudioClip importer.
+- This operation is Editor-only and never runs automatically during `.msf` imports. Source-level implementation verified; Unity compile/runtime testing must be performed after package update.
+
 ## 0.7.1 — Fix official vgmstream-cli installer validation
 
 - Fixed reported Unity 2022.3 `IOException: vgmstream-cli -V did not return valid version information` after downloading the official decoder. Upstream `cli/vgmstream_cli.c` prints legitimate JSON from `-V` and then follows its `goto fail` path, returning exit code 1. Our installer incorrectly required exit code 0.
