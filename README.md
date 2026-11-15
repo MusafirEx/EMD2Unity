@@ -4,6 +4,16 @@ Native **Unity 2022.3+** Editor package for experimenting with PS3 Kamen Rider *
 
 > **Experimental:** The Editor assembly was previously compiled in Unity 2022.3.62f3. Version 0.4.3 adds an evidence-only CCM-to-PEMT Motion ID cross-reference panel. Version 0.4.2 added a read-only CCM Inspector/Browser for 0x80-byte combo records. Version 0.4.1 added a read-only SEQ Inspector/Browser for big-endian header words, referenced resource strings and raw byte-marker counts (without guessing VM opcodes). Version 0.4.0 added in-Editor PEMT Animation Preview with Play/Pause/Stop, scrubbing, orbit and zoom. Version 0.3.7 adds optional partial recovery of supported polygon records and detailed vertex buffer diagnostics for stage EMDs. Version 0.3.6 supported verifiable nonstandard triangle counts or trailing padding in EMD stage index buffers. Version 0.3.5 added 28-byte UV/color-record support for stage EMD models and flags imported EMD assets containing no renderable geometry. Version 0.3.4 adds batch export of all PEMT motions with transform keys to separate .anim files. The decoder is the same as the working single-motion export. Version 0.3.3 made PEMT Inspector controls interactive when selecting a .pemt source file. The previous UI was attached to the generated ScriptableObject, which Unity displays read-only. A separate PEMT Motion Browser window is also available. The EMD model importer remains unchanged from v0.1.5. Unity rendering, rig and shader equivalence remain pending. It may require fixes for particular models.
 
+### Sony MSF AudioClip importer (v0.6.9)
+
+EMD2Unity now includes an **MSF audio importer module** within this same UPM package (no separate package required). For example, select `Assets/Sound/SSE/ACL_SSE/ACL_ACCEL.msf`. When decoding succeeds, expand the original `.msf` in Unity's Project window to find `ACL_ACCEL_Audio` as an **AudioClip child** beneath `ACL_ACCEL_MSF_Info`. Use the clip from an AudioSource or select it to inspect its duration, channels and sample rate.
+
+**Supported without extra tools:** Sony MSF header (magic/version, codec, channels, sample rate, loop flags) plus PCM16 big endian (codec `0`), PCM16 little endian (codec `1`), and PS ADPCM (codec `3`). MSF codecs `4`–`6` (ATRAC3) and `7` (MPEG/MP3) require the optional external **[vgmstream-cli](https://github.com/vgmstream/vgmstream)** decoder. Install `vgmstream-cli` separately (along with its usual codec dependencies) and use **Tools > EMD2Unity > MSF > Set Default vgmstream-cli Path** to configure it once for all MSF assets. Alternatively, set **vgmstream-cli Executable** per selected `.msf` and click **Apply**. No automatic downloads or bundled native executables are used. If no supported decoder is available, the header remains inspectable and the Unity Console explains why an AudioClip could not be generated.
+
+**Important Unity persistence caveat:** Unity has historically had issues saving the PCM data of procedurally created AudioClip sub-assets. The importer attempts to create the real AudioClip child but does not guarantee persistence until the exact Unity version is tested. Click **Export Native WAV (next to MSF)** in the MSF Inspector to generate a unique-named `.wav` beside the original file and have Unity import that via its native, persistent AudioClip importer. It will not overwrite an existing WAV or modify the source MSF. If an imported clip appears but fails to play after reload, select that `.msf` and run **Tools > EMD2Unity > MSF > Validate Selected MSF AudioClip** to test audio sample retention.
+
+For decoder smoke tests, use **Tools > EMD2Unity > MSF > Run Decoder Self-Test**. MSF loop flag/offsets are reported as metadata; configure `AudioSource.loop` in your scene as appropriate. This module is experimental pending testing of real `ACL_ACCEL.msf` codec and Unity 2022.3 sub-asset serialization.
+
 ### PEMT as a BRRES-style AnimationClip container (v0.6.2)
 
 A single `.pemt` source now embeds **many Unity AnimationClip sub-assets**, one per successfully decoded numeric Motion ID. Expand `0000.pemt` in the Project window to select clips such as `0000_Motion_100` for Animator, Timeline, and Animation workflows. The `.pemt` remains the container: the original binary is not overwritten and the main `PemtMotionLibrary` metadata asset is preserved.
@@ -59,7 +69,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.6.7.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.6.9.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
