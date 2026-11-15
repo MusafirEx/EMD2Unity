@@ -123,6 +123,140 @@ namespace MusafirEx.EMD2Unity
         }
     }
 
+    // A read-only smoke test for the exact source .msf selected in Unity.
+    // This verifies that Unity can find the imported AudioClip child AND
+    // retrieve its actual PCM data after the import has completed.
+    internal static class MsfAudioValidation
+    {
+        [MenuItem("Tools/EMD2Unity/MSF/Validate Selected MSF AudioClip")]
+        private static void ValidateSelected()
+        {
+            string path = AssetDatabase.GetAssetPath(Selection.activeObject);
+            if (string.IsNullOrWhiteSpace(path) ||
+                !path.EndsWith(".msf", StringComparison.OrdinalIgnoreCase))
+            {
+                Debug.LogWarning("EMD2Unity MSF: select an .msf or its AudioClip child first.");
+                return;
+            }
+            AudioClip clip = AssetDatabase.LoadAllAssetsAtPath(path)
+                .OfType<AudioClip>().FirstOrDefault();
+            if (clip == null)
+            {
+                Debug.LogError("EMD2Unity MSF: No AudioClip child at " + path +
+                    ". Check the MSF Inspector codec and configure vgmstream-cli if needed.");
+                return;
+            }
+            int sampleFrames = Math.Min(clip.samples, 2048);
+            if (sampleFrames <= 0 || clip.channels <= 0)
+            {
+                Debug.LogError("EMD2Unity MSF: Imported AudioClip has zero samples: " + path);
+                return;
+            }
+            var pcm = new float[sampleFrames * clip.channels];
+            if (!clip.GetData(pcm, 0))
+            {
+                Debug.LogError("EMD2Unity MSF: AudioClip child exists but PCM GetData failed " +
+                    "after import. Use Export Native WAV for a persistent Unity AudioClip: " + path);
+                return;
+            }
+
+            // A silent clip is valid, but decode a matching managed source if
+            // possible to detect an AudioClip that silently lost its PCM data.
+            try
+            {
+                byte[] source = File.ReadAllBytes(path);
+                MsfHeader header = MsfAudioDecoder.ParseHeader(source);
+                if (header.Codec == 0 || header.Codec == 1 || header.Codec == 3)
+                {
+                    MsfAudioData reference = MsfAudioDecoder.DecodeManaged(source, header);
+                    int n = Math.Min(pcm.Length, reference.Interleaved.Length);
+                    for (int i = 0; i < n; i++)
+                    {
+                        if (Math.Abs(pcm[i] - reference.Interleaved[i]) > 0.0005f)
+                        {
+                            Debug.LogError("EMD2Unity MSF: AudioClip child lost or changed " +
+                                "its decoded PCM data at sample " + i +
+                                ". Export Native WAV instead: " + path);
+                            return;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("EMD2Unity MSF: reference verification skipped: " +
+                    ex.Message);
+            }
+            Debug.Log("EMD2Unity MSF PASS: selected .msf has a readable AudioClip child: " +
+                path + " | " + clip.samples + " frames, " + clip.channels +
+                " channels, " + clip.frequency + " Hz.");
+        }
+
+        [MenuItem("Tools/EMD2Unity/MSF/Run Decoder Self-Test")]
+        private static void TestManagedDecoders()
+        {
+            try
+            {
+                byte[] pcm = MakeHeader(1, 1, 8);
+                // PCM16 little-endian: 0, +16384, -16384, -32768.
+                byte[] pcmBytes = { 0, 0, 0, 64, 0, 192, 0, 128 };
+                Array.Copy(pcmBytes, 0, pcm, 0x40, pcmBytes.Length);
+                MsfHeader header = MsfAudioDecoder.ParseHeader(pcm);
+                MsfAudioData decoded = MsfAudioDecoder.DecodeManaged(pcm, header);
+                Assert(decoded.Frames == 4 && decoded.Channels == 1, "PCM frame count");
+                Assert(Math.Abs(decoded.Interleaved[1] - 0.5f) < 0.0001f, "PCM positive");
+                Assert(Math.Abs(decoded.Interleaved[2] + 0.5f) < 0.0001f, "PCM negative");
+                Assert(Math.Abs(decoded.Interleaved[3] + 1f) < 0.0001f, "PCM min value");
+                MsfAudioData wav = MsfAudioDecoder.DecodeWav(
+                    MsfAudioDecoder.EncodeWav16(decoded));
+                Assert(wav.Frames == 4 && wav.Channels == 1, "WAV roundtrip frames");
+                Assert(Math.Abs(wav.Interleaved[1] - 0.5f) < 0.0001f, "WAV samples");
+
+                byte[] psx = MakeHeader(3, 1, 16);
+                psx[0x40] = 0x0C; // predictor zero / shift 12
+                for (int i = 0x42; i < 0x50; i++) psx[i] = 0x11;
+                MsfAudioData adpcm = MsfAudioDecoder.DecodeManaged(
+                    psx, MsfAudioDecoder.ParseHeader(psx));
+                Assert(adpcm.Frames == 28, "ADPCM 28 samples per 16-byte block");
+                Assert(Math.Abs(adpcm.Interleaved[0] - 1f / 32768f) < 0.000001f,
+                    "ADPCM signed nibble");
+                Debug.Log("EMD2Unity MSF decoder self-test PASS: PCM16, " +
+                    "PS ADPCM, and WAV roundtrip.");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError("EMD2Unity MSF decoder self-test FAILED: " + ex);
+            }
+        }
+
+        private static void Assert(bool condition, string label)
+        {
+            if (!condition) throw new InvalidOperationException("MSF test failed: " + label);
+        }
+
+        private static byte[] MakeHeader(int codec, int channels, int payload)
+        {
+            var bytes = new byte[0x40 + payload];
+            bytes[0] = (byte)'M';
+            bytes[1] = (byte)'S';
+            bytes[2] = (byte)'F';
+            bytes[3] = 0x43;
+            PutBe32(bytes, 4, codec);
+            PutBe32(bytes, 8, channels);
+            PutBe32(bytes, 12, payload);
+            PutBe32(bytes, 16, 48000);
+            return bytes;
+        }
+
+        private static void PutBe32(byte[] bytes, int at, int value)
+        {
+            bytes[at] = (byte)(value >> 24);
+            bytes[at + 1] = (byte)(value >> 16);
+            bytes[at + 2] = (byte)(value >> 8);
+            bytes[at + 3] = (byte)value;
+        }
+    }
+
     [CustomEditor(typeof(MsfImporter))]
     public sealed class MsfImporterInspector : ScriptedImporterEditor
     {
