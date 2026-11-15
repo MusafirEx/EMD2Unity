@@ -4,7 +4,13 @@ Native **Unity 2022.3+** Editor package for experimenting with PS3 Kamen Rider *
 
 > **Experimental:** The Editor assembly was previously compiled in Unity 2022.3.62f3. Version 0.4.3 adds an evidence-only CCM-to-PEMT Motion ID cross-reference panel. Version 0.4.2 added a read-only CCM Inspector/Browser for 0x80-byte combo records. Version 0.4.1 added a read-only SEQ Inspector/Browser for big-endian header words, referenced resource strings and raw byte-marker counts (without guessing VM opcodes). Version 0.4.0 added in-Editor PEMT Animation Preview with Play/Pause/Stop, scrubbing, orbit and zoom. Version 0.3.7 adds optional partial recovery of supported polygon records and detailed vertex buffer diagnostics for stage EMDs. Version 0.3.6 supported verifiable nonstandard triangle counts or trailing padding in EMD stage index buffers. Version 0.3.5 added 28-byte UV/color-record support for stage EMD models and flags imported EMD assets containing no renderable geometry. Version 0.3.4 adds batch export of all PEMT motions with transform keys to separate .anim files. The decoder is the same as the working single-motion export. Version 0.3.3 made PEMT Inspector controls interactive when selecting a .pemt source file. The previous UI was attached to the generated ScriptableObject, which Unity displays read-only. A separate PEMT Motion Browser window is also available. The EMD model importer remains unchanged from v0.1.5. Unity rendering, rig and shader equivalence remain pending. It may require fixes for particular models.
 
-### Sony MSF AudioClip importer (v0.6.9)
+### Sony MSF AudioClip importer (v0.7.0)
+
+**Official vgmstream integration:** The MSF importer integrates with [vgmstream/vgmstream](https://github.com/vgmstream/vgmstream), an open-source decoder supporting Sony MSF, ATRAC3, MPEG and other game audio formats. You do not need to install vgmstream manually: select an `.msf` and click **Install / Update Official vgmstream-cli (r2168)** in its Inspector, or use **Tools > EMD2Unity > MSF > Install Official vgmstream-cli (r2168)**. With your confirmation, Unity downloads the release directly from GitHub, installs it into the project's `Library/EMD2Unity/vgmstream/r2168/` directory and configures it. **Nothing is downloaded on import or compiled into EMD2Unity; native binary files are not redistributed.** Reimport the `.msf` to generate its AudioClip child. The decoder is used only by the editor; a built player uses the resulting Unity AudioClip or exported WAV, not vgmstream.
+
+Use **Validate vgmstream-cli** to verify installation and **Inspect Selected MSF via vgmstream (-I)** to inspect official JSON codec/loop metadata. You can still select your own executable in the per-MSF settings or use **Tools > EMD2Unity > MSF > Set Default vgmstream-cli Path**. The included C# decoder remains a no-dependency fallback for PCM16/PS ADPCM. The auto-installer uses the official vgmstream `r2168` release (published 2026-10-25) and selects the appropriate Windows x64/Linux/macOS ZIP. Upstream license: [COPYING](https://github.com/vgmstream/vgmstream/blob/master/COPYING). Installed third-party codec binaries have their own distribution terms; they are not included with this UPM package.
+
+
 
 EMD2Unity now includes an **MSF audio importer module** within this same UPM package (no separate package required). For example, select `Assets/Sound/SSE/ACL_SSE/ACL_ACCEL.msf`. When decoding succeeds, expand the original `.msf` in Unity's Project window to find `ACL_ACCEL_Audio` as an **AudioClip child** beneath `ACL_ACCEL_MSF_Info`. Use the clip from an AudioSource or select it to inspect its duration, channels and sample rate.
 
@@ -69,7 +75,7 @@ A Git package installs from the repository root (`package.json`). It is named `c
 Download the `.unitypackage` from the package build workflow or create it locally:
 
 ```bash
-python Tools/build_unitypackage.py --output EMD2Unity-v0.6.9.unitypackage
+python Tools/build_unitypackage.py --output EMD2Unity-v0.7.0.unitypackage
 ```
 
 Then in Unity select **Assets → Import Package → Custom Package...** and select the resulting archive. **Do not install both the UPM package and the classic Assets package**, which would register the same importer twice.
