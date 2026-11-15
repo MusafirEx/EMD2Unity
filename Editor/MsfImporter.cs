@@ -16,18 +16,22 @@ namespace MusafirEx.EMD2Unity
     {
         [SerializeField] private bool preferVgmstream = true;
         [SerializeField] private string vgmstreamCliPath = "";
+        private const string GlobalCliPathKey = "MusafirEx.EMD2Unity.MSF.DefaultVgmstreamCli";
+        internal static string SharedCliPath => EditorPrefs.GetString(GlobalCliPathKey, "");
 
         internal bool PreferVgmstream => preferVgmstream;
         internal string VgmstreamCliPath => vgmstreamCliPath;
+        internal string EffectiveCliPath => string.IsNullOrWhiteSpace(vgmstreamCliPath)
+            ? SharedCliPath : vgmstreamCliPath.Trim();
 
         private MsfAudioData Decode(byte[] source, MsfHeader header,
             Action<string> warn)
         {
-            if (preferVgmstream && !string.IsNullOrWhiteSpace(vgmstreamCliPath))
+            if (preferVgmstream && !string.IsNullOrWhiteSpace(EffectiveCliPath))
             {
                 try
                 {
-                    return MsfAudioDecoder.DecodeVgmstream(assetPath, vgmstreamCliPath.Trim());
+                    return MsfAudioDecoder.DecodeVgmstream(assetPath, EffectiveCliPath);
                 }
                 catch (Exception ex)
                 {
@@ -120,6 +124,24 @@ namespace MusafirEx.EMD2Unity
             AssetDatabase.ImportAsset(outputPath, ImportAssetOptions.ForceUpdate);
             Debug.Log("EMD2Unity MSF: exported native Unity WAV AudioClip: " + outputPath);
             return outputPath;
+        }
+    }
+
+    internal static class MsfToolSettings
+    {
+        [MenuItem("Tools/EMD2Unity/MSF/Set Default vgmstream-cli Path")]
+        private static void SetSharedDecoder()
+        {
+            string existing = MsfImporter.SharedCliPath;
+            string folder = string.IsNullOrWhiteSpace(existing) ? "" :
+                (Path.GetDirectoryName(existing) ?? "");
+            string selected = EditorUtility.OpenFilePanel(
+                "Select vgmstream-cli executable for all MSF importers",
+                folder, Application.platform == RuntimePlatform.WindowsEditor ? "exe" : "");
+            if (string.IsNullOrWhiteSpace(selected)) return;
+            EditorPrefs.SetString("MusafirEx.EMD2Unity.MSF.DefaultVgmstreamCli", selected);
+            Debug.Log("EMD2Unity MSF: shared decoder configured. " +
+                "Reimport affected .msf files to generate their AudioClip children.");
         }
     }
 
@@ -269,7 +291,9 @@ namespace MusafirEx.EMD2Unity
                 "Import a Sony PS3 MSF file as an expandable asset with an AudioClip " +
                 "child. Managed decoding supports PCM16 BE/LE and PS ADPCM. " +
                 "ATRAC3 and MPEG/MP3 need a separately installed vgmstream-cli. " +
-                "No executable is bundled or downloaded. The original MSF is unchanged.",
+                "No executable is bundled or downloaded. The original MSF is unchanged. " +
+                "Set a shared decoder with Tools > EMD2Unity > MSF > " +
+                "Set Default vgmstream-cli Path, or override it per MSF below.",
                 MessageType.Info);
 
             EditorGUILayout.PropertyField(serializedObject.FindProperty("preferVgmstream"),
@@ -278,6 +302,10 @@ namespace MusafirEx.EMD2Unity
                 new GUIContent("vgmstream-cli Executable",
                     "Absolute path to vgmstream-cli.exe, or a command on PATH. " +
                     "Set this per asset to keep imports reproducible."));
+            if (importer != null)
+                EditorGUILayout.LabelField("Effective Decoder Path",
+                    string.IsNullOrWhiteSpace(importer.EffectiveCliPath) ?
+                    "(not configured)" : importer.EffectiveCliPath);
             if (GUILayout.Button("Browse vgmstream-cli..."))
             {
                 string current = serializedObject.FindProperty("vgmstreamCliPath").stringValue;
