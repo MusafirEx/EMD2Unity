@@ -78,6 +78,13 @@ namespace MusafirEx.EMD2Unity
             };
             if (sources.Length == 0) return report;
 
+            // Decode in Library rather than Assets: temporary WAVs should
+            // never be picked up as transient Unity asset imports.
+            string stagingFolder = Path.Combine(
+                Directory.GetCurrentDirectory(), "Library", "EMD2Unity", "MsfWavStaging");
+            Directory.CreateDirectory(stagingFolder);
+            string projectDecoder = VgmstreamIntegration.ResolveExecutable("");
+
             try
             {
                 for (int i = 0; i < sources.Length; i++)
@@ -101,15 +108,13 @@ namespace MusafirEx.EMD2Unity
                         continue;
                     }
 
-                    string temporary = Path.Combine(
-                        Path.GetDirectoryName(wav) ?? "",
-                        ".emd2unity_msf_" + Guid.NewGuid().ToString("N") + ".wav")
-                        .Replace('\\', '/');
+                    string temporary = Path.Combine(stagingFolder,
+                        "msf_" + Guid.NewGuid().ToString("N") + ".wav");
                     try
                     {
                         // Always create a staging file first. File.Move cannot
                         // overwrite a newly created destination in the meantime.
-                        DecodeToStagingWav(path, temporary);
+                        DecodeToStagingWav(path, temporary, projectDecoder);
                         ValidateWav(temporary);
                         File.Move(temporary, wav);
                         report.Exported++;
@@ -154,12 +159,14 @@ namespace MusafirEx.EMD2Unity
             return report;
         }
 
-        private static void DecodeToStagingWav(string sourcePath, string temporary)
+        private static void DecodeToStagingWav(string sourcePath, string temporary,
+            string projectDecoder)
         {
             var importer = AssetImporter.GetAtPath(sourcePath) as MsfImporter;
             bool preferVgmstream = importer == null || importer.PreferVgmstream;
             string overridePath = importer == null ? "" : importer.VgmstreamCliPath;
-            string cli = VgmstreamIntegration.ResolveExecutable(overridePath);
+            string cli = string.IsNullOrWhiteSpace(overridePath) ?
+                projectDecoder : overridePath.Trim();
             bool cliAvailable = !string.IsNullOrWhiteSpace(cli) && File.Exists(cli);
             Exception managedFailure = null;
             Exception cliFailure = null;
